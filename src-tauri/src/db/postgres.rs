@@ -147,6 +147,7 @@ impl DbClient for PostgresClient {
                      JOIN information_schema.key_column_usage kcu \
                        ON tc.constraint_name = kcu.constraint_name \
                       AND tc.table_schema = kcu.table_schema \
+                      AND tc.table_name = kcu.table_name \
                      WHERE tc.constraint_type = 'PRIMARY KEY' \
                  ) pk ON pk.table_schema = c.table_schema \
                      AND pk.table_name = c.table_name \
@@ -321,6 +322,8 @@ impl ToSql for CellValue {
             CellValue::Int(i) => match *ty {
                 Type::INT2 => (*i as i16).to_sql(ty, out),
                 Type::INT4 => (*i as i32).to_sql(ty, out),
+                // OID is an unsigned 32-bit int; i64 has no ToSql for it.
+                Type::OID => (*i as u32).to_sql(ty, out),
                 _ => i.to_sql(ty, out),
             },
             CellValue::Float(f) => match *ty {
@@ -353,30 +356,30 @@ impl ToSql for CellValue {
 }
 
 fn encode_datetime(s: &str, ty: &Type, out: &mut BytesMut) -> Result<IsNull, BoxError> {
+    // On any chrono parse miss, fall back to sending the raw string — Postgres' own
+    // datetime parser is far more permissive than chrono's strict format strings.
     match *ty {
-        Type::TIMESTAMPTZ => {
-            let dt = chrono::DateTime::parse_from_rfc3339(s)
-                .map(|d| d.with_timezone(&chrono::Utc))
-                .map_err(|e| Box::new(e) as BoxError)?;
-            dt.to_sql(ty, out)
-        }
+        Type::TIMESTAMPTZ => match chrono::DateTime::parse_from_rfc3339(s) {
+            Ok(dt) => dt.with_timezone(&chrono::Utc).to_sql(ty, out),
+            Err(_) => s.to_sql(ty, out),
+        },
         Type::TIMESTAMP => {
-            let dt = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f")
+            match chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f")
                 .or_else(|_| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S%.f"))
-                .map_err(|e| Box::new(e) as BoxError)?;
-            dt.to_sql(ty, out)
+            {
+                Ok(dt) => dt.to_sql(ty, out),
+                Err(_) => s.to_sql(ty, out),
+            }
         }
-        Type::DATE => {
-            let d = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d")
-                .map_err(|e| Box::new(e) as BoxError)?;
-            d.to_sql(ty, out)
-        }
-        Type::TIME => {
-            let t = chrono::NaiveTime::parse_from_str(s, "%H:%M:%S%.f")
-                .map_err(|e| Box::new(e) as BoxError)?;
-            t.to_sql(ty, out)
-        }
-        // Fallback: hand the string to the server to cast.
+        Type::DATE => match chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+            Ok(d) => d.to_sql(ty, out),
+            Err(_) => s.to_sql(ty, out),
+        },
+        Type::TIME => match chrono::NaiveTime::parse_from_str(s, "%H:%M:%S%.f") {
+            Ok(t) => t.to_sql(ty, out),
+            Err(_) => s.to_sql(ty, out),
+        },
+        // Other types: hand the string to the server to cast.
         _ => s.to_sql(ty, out),
     }
 }

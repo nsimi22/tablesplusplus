@@ -65,6 +65,14 @@ function CellEditor({
 }) {
   const [text, setText] = useState(initial);
   const ref = useRef<HTMLInputElement>(null);
+  // Enter/Esc unmounts the input, which also fires blur → guard against a double onDone.
+  const doneRef = useRef(false);
+
+  const handleDone = (raw: string, changed: boolean) => {
+    if (doneRef.current) return;
+    doneRef.current = true;
+    onDone(raw, changed);
+  };
 
   useEffect(() => {
     ref.current?.focus();
@@ -76,14 +84,14 @@ function CellEditor({
       ref={ref}
       value={text}
       onChange={(e) => setText(e.target.value)}
-      onBlur={() => onDone(text, text !== initial)}
+      onBlur={() => handleDone(text, text !== initial)}
       onKeyDown={(e) => {
         if (e.key === "Enter") {
           e.preventDefault();
-          onDone(text, text !== initial);
+          handleDone(text, text !== initial);
         } else if (e.key === "Escape") {
           e.preventDefault();
-          onDone(initial, false);
+          handleDone(initial, false);
         }
       }}
       className="selectable h-6 w-full rounded-sm border border-ring bg-background px-1 text-sm outline-none"

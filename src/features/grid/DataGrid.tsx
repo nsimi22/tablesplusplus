@@ -97,6 +97,9 @@ export function DataGrid({
 
   const commit = async () => {
     setCommitError(null);
+    // Drop each row from the pending set only after it commits, so a mid-batch failure
+    // doesn't re-run already-applied updates when the user retries.
+    const remaining: Edits = { ...edits };
     try {
       for (const [rowKey, rowEdits] of Object.entries(edits)) {
         const rowIndex = Number(rowKey);
@@ -116,10 +119,12 @@ export function DataGrid({
           where,
         });
         await exec.mutateAsync({ sql, params });
+        delete remaining[rowIndex];
       }
       setEdits({});
       await query.refetch();
     } catch (err) {
+      setEdits(remaining);
       setCommitError(errorMessage(err));
     }
   };

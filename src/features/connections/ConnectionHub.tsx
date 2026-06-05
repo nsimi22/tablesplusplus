@@ -106,6 +106,9 @@ function ConnectionListItem({
   const del = useDeleteConnection();
   const enterWorkspace = useWorkspaceStore((s) => s.enterWorkspace);
   const [error, setError] = useState<string | null>(null);
+  // Two-click confirm guards against accidental deletion (reliable in the Tauri webview,
+  // unlike window.confirm). Resets when the pointer leaves the row.
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const onConnect = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -120,12 +123,18 @@ function ConnectionListItem({
 
   const onDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!confirmingDelete) {
+      setConfirmingDelete(true);
+      return;
+    }
+    setConfirmingDelete(false);
     await del.mutateAsync(conn.id);
   };
 
   return (
     <div
       onClick={onSelect}
+      onMouseLeave={() => setConfirmingDelete(false)}
       className={cn(
         "group cursor-pointer rounded-md px-2.5 py-2 transition-colors",
         active ? "bg-accent" : "hover:bg-accent/60",
@@ -146,7 +155,13 @@ function ConnectionListItem({
           <Button size="icon" variant="ghost" onClick={onConnect} aria-label="Connect">
             {connect.isPending ? <Spinner /> : <Zap className="h-3.5 w-3.5" />}
           </Button>
-          <Button size="icon" variant="ghost" onClick={onDelete} aria-label="Delete">
+          <Button
+            size="icon"
+            variant={confirmingDelete ? "destructive" : "ghost"}
+            onClick={onDelete}
+            aria-label={confirmingDelete ? "Confirm delete" : "Delete"}
+            title={confirmingDelete ? "Click again to confirm" : "Delete"}
+          >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
         </div>
