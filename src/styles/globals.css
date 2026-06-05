@@ -1,0 +1,84 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Premium, low-contrast dark theme (default). All colors are HSL channel triples
+ * consumed by Tailwind tokens (tailwind.config.ts). No component should hardcode hex.
+ */
+@layer base {
+  :root,
+  .dark {
+    --background: 222 16% 9%;
+    --foreground: 210 14% 88%;
+
+    --surface: 222 15% 11%;
+    --surface-raised: 222 14% 14%;
+
+    --muted: 222 12% 18%;
+    --muted-foreground: 215 12% 58%;
+
+    --border: 222 12% 20%;
+    --input: 222 12% 22%;
+    --ring: 210 70% 55%;
+
+    --primary: 210 80% 56%;
+    --primary-foreground: 210 30% 98%;
+
+    --accent: 222 14% 18%;
+    --accent-foreground: 210 14% 90%;
+
+    --destructive: 0 62% 52%;
+    --destructive-foreground: 0 0% 98%;
+
+    --success: 148 48% 46%;
+    --success-foreground: 148 30% 97%;
+
+    --warning: 38 86% 56%;
+    --warning-foreground: 38 40% 12%;
+
+    --radius: 0.5rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-size: 0.8125rem;
+    overflow: hidden;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Calm, thin scrollbars to match the premium feel. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted rounded-full;
+    border: 2px solid hsl(var(--background));
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-border;
+  }
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
+
+@layer utilities {
+  /* Inputs and editable surfaces opt back into text selection. */
+  .selectable {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+}
