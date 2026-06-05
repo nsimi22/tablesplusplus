@@ -17,7 +17,10 @@ interface WorkspaceState {
   /** The connection currently open in the workspace; null shows the Connection Hub. */
   activeConnectionId: string | null;
   tabs: WorkspaceTab[];
+  /** The tab shown in the primary (left) pane. */
   activeTabId: string | null;
+  /** The tab pinned to the secondary (right) pane when split-view is active; null = no split. */
+  secondaryTabId: string | null;
 
   enterWorkspace: (connectionId: string) => void;
   leaveWorkspace: () => void;
@@ -26,6 +29,8 @@ interface WorkspaceState {
   openQueryTab: () => void;
   setTabSql: (tabId: string, sql: string) => void;
   setActiveTab: (tabId: string) => void;
+  /** Pin a tab to the right pane (or unpin it if already pinned). Max 2 panes. */
+  toggleSecondaryTab: (tabId: string) => void;
   closeTab: (tabId: string) => void;
 }
 
@@ -39,11 +44,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   activeConnectionId: null,
   tabs: [],
   activeTabId: null,
+  secondaryTabId: null,
 
   enterWorkspace: (connectionId) =>
-    set({ activeConnectionId: connectionId, tabs: [], activeTabId: null }),
+    set({ activeConnectionId: connectionId, tabs: [], activeTabId: null, secondaryTabId: null }),
 
-  leaveWorkspace: () => set({ activeConnectionId: null, tabs: [], activeTabId: null }),
+  leaveWorkspace: () =>
+    set({ activeConnectionId: null, tabs: [], activeTabId: null, secondaryTabId: null }),
 
   openTableTab: (table) =>
     set((state) => {
@@ -81,6 +88,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
 
   setActiveTab: (tabId) => set({ activeTabId: tabId }),
 
+  toggleSecondaryTab: (tabId) =>
+    set((state) => ({
+      secondaryTabId: state.secondaryTabId === tabId ? null : tabId,
+    })),
+
   closeTab: (tabId) =>
     set((state) => {
       const tabs = state.tabs.filter((t) => t.id !== tabId);
@@ -88,6 +100,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       if (activeTabId === tabId) {
         activeTabId = tabs.length ? tabs[tabs.length - 1].id : null;
       }
-      return { tabs, activeTabId };
+      // Closing the pinned tab also exits the split.
+      const secondaryTabId = state.secondaryTabId === tabId ? null : state.secondaryTabId;
+      return { tabs, activeTabId, secondaryTabId };
     }),
 }));

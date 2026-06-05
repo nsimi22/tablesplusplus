@@ -1,11 +1,13 @@
-import { Plus, Table2, TerminalSquare, X } from "lucide-react";
+import { Columns2, Plus, Table2, TerminalSquare, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore } from "@/store/useWorkspaceStore";
 
 export function TabBar() {
   const tabs = useWorkspaceStore((s) => s.tabs);
   const activeTabId = useWorkspaceStore((s) => s.activeTabId);
+  const secondaryTabId = useWorkspaceStore((s) => s.secondaryTabId);
   const setActiveTab = useWorkspaceStore((s) => s.setActiveTab);
+  const toggleSecondaryTab = useWorkspaceStore((s) => s.toggleSecondaryTab);
   const closeTab = useWorkspaceStore((s) => s.closeTab);
   const openQueryTab = useWorkspaceStore((s) => s.openQueryTab);
 
@@ -34,9 +36,25 @@ export function TabBar() {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
+                  toggleSecondaryTab(tab.id);
+                }}
+                className={cn(
+                  "ml-1 rounded p-0.5 hover:bg-muted",
+                  tab.id === secondaryTabId
+                    ? "text-primary opacity-100"
+                    : "opacity-0 group-hover:opacity-100",
+                )}
+                aria-label={tab.id === secondaryTabId ? "Unsplit" : "Open in split view"}
+                title={tab.id === secondaryTabId ? "Remove from split" : "Open in split view"}
+              >
+                <Columns2 className="h-3 w-3" />
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
                   closeTab(tab.id);
                 }}
-                className="ml-1 rounded p-0.5 opacity-0 hover:bg-muted group-hover:opacity-100"
+                className="rounded p-0.5 opacity-0 hover:bg-muted group-hover:opacity-100"
                 aria-label="Close tab"
               >
                 <X className="h-3 w-3" />
