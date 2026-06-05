@@ -134,8 +134,9 @@ tablesplusplus/
 
 ### 4.2 Connection Pooling
 
-- A backend-global, thread-safe **pool registry** (`State<PoolRegistry>` behind a `Mutex`/`RwLock`
-  + `DashMap`) maps `connection_id → pool`.
+- A backend-global, thread-safe **pool registry** (`State<PoolRegistry>` wrapping a `DashMap`)
+  maps `connection_id → pool`. `DashMap` is already internally concurrent — do **not** wrap it in
+  an outer `Mutex`/`RwLock`, which would serialize access and defeat its purpose.
 - `connect()` resolves the secret from keyring, opens (optionally through an SSH tunnel) a pool
   via deadpool, and stores it in the registry. Subsequent queries check out a connection from
   the pool; they never reconnect from scratch.
@@ -152,8 +153,17 @@ tablesplusplus/
   ```rust
   // Conceptual shape — finalize in src-tauri/src/db/client.rs
   pub struct ColumnMeta { pub name: String, pub data_type: String, pub nullable: bool }
-  pub enum CellValue { Null, Bool(bool), Int(i64), Float(f64), Text(String),
-                       Bytes(Vec<u8>), Json(serde_json::Value) }
+  pub enum CellValue {
+      Null,
+      Bool(bool),
+      Int(i64),
+      Float(f64),
+      Decimal(String),           // exact numeric/decimal — string to avoid f64 precision loss
+      Text(String),
+      Bytes(Vec<u8>),
+      DateTime(String),          // date/time/timestamp as ISO-8601 to avoid lossy text parsing
+      Json(serde_json::Value),
+  }
   pub struct QueryResult {
       pub columns: Vec<ColumnMeta>,
       pub rows: Vec<Vec<CellValue>>,
@@ -178,7 +188,9 @@ The unified abstraction (designed in Phase 2, implemented in Phase 3). Minimum s
 pub trait DbClient: Send + Sync {
     async fn connect(&self) -> Result<(), AppError>;
     async fn disconnect(&self) -> Result<(), AppError>;
-    async fn execute_query(&self, sql: String) -> Result<QueryResult, AppError>;
+    // `params` carries bind values so app-generated DML (grid edits/commits) is always
+    // parameterized — never string-interpolated. Pass an empty Vec for user-authored SQL.
+    async fn execute_query(&self, sql: String, params: Vec<CellValue>) -> Result<QueryResult, AppError>;
     async fn get_schema(&self) -> Result<Schema, AppError>;
     async fn test_connection(&self) -> Result<(), AppError>;
 }
