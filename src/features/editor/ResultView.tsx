@@ -1,0 +1,112 @@
+import { useRef } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { AlertCircle, CheckCircle2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import type { QueryResult } from "@/lib/types";
+import { displayCell } from "@/features/grid/cell";
+
+const ROW_HEIGHT = 26;
+const COL_WIDTH = 176;
+
+interface ResultViewProps {
+  result: QueryResult | null;
+  error: string | null;
+}
+
+/** Read-only, virtualized view of a console query result (or an error/affected-rows state). */
+export function ResultView({ result, error }: ResultViewProps) {
+  if (error) {
+    return (
+      <div className="flex items-start gap-2 p-4 text-sm text-destructive">
+        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+        <span className="selectable whitespace-pre-wrap break-words">{error}</span>
+      </div>
+    );
+  }
+
+  if (!result) {
+    return (
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+        Run a query to see results
+      </div>
+    );
+  }
+
+  if (result.columns.length === 0) {
+    return (
+      <div className="flex items-center gap-2 p-4 text-sm text-success">
+        <CheckCircle2 className="h-4 w-4" />
+        {result.rowsAffected ?? 0} row{result.rowsAffected === 1 ? "" : "s"} affected ·{" "}
+        {result.elapsedMs} ms
+      </div>
+    );
+  }
+
+  return <ResultTable result={result} />;
+}
+
+function ResultTable({ result }: { result: QueryResult }) {
+  const parentRef = useRef<HTMLDivElement>(null);
+  const virtualizer = useVirtualizer({
+    count: result.rows.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 16,
+  });
+  const totalWidth = result.columns.length * COL_WIDTH;
+
+  return (
+    <div className="flex h-full flex-col">
+      <div ref={parentRef} className="flex-1 overflow-auto">
+        <div
+          className="sticky top-0 z-10 flex border-b border-border bg-surface-raised"
+          style={{ width: totalWidth }}
+        >
+          {result.columns.map((col) => (
+            <div
+              key={col.name}
+              style={{ width: COL_WIDTH }}
+              className="shrink-0 truncate border-r border-border px-2 py-1 text-xs font-semibold"
+              title={`${col.name} · ${col.dataType}`}
+            >
+              {col.name}
+            </div>
+          ))}
+        </div>
+        <div style={{ height: virtualizer.getTotalSize(), width: totalWidth, position: "relative" }}>
+          {virtualizer.getVirtualItems().map((vRow) => (
+            <div
+              key={vRow.index}
+              className={cn(
+                "absolute left-0 flex border-b border-border/60",
+                vRow.index % 2 ? "bg-surface/40" : "",
+              )}
+              style={{ top: vRow.start, height: ROW_HEIGHT, width: totalWidth }}
+            >
+              {result.rows[vRow.index].map((cell, colIndex) => (
+                <div
+                  key={colIndex}
+                  style={{ width: COL_WIDTH }}
+                  className="flex h-full shrink-0 items-center border-r border-border/60 px-2 text-sm"
+                >
+                  <span
+                    className={cn(
+                      "selectable truncate",
+                      cell.kind === "null" ? "italic text-muted-foreground/60" : "",
+                    )}
+                    title={displayCell(cell)}
+                  >
+                    {displayCell(cell)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="border-t border-border px-3 py-1 text-xs text-muted-foreground">
+        {result.rows.length} rows · {result.elapsedMs} ms
+      </div>
+    </div>
+  );
+}

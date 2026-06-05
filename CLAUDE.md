@@ -88,9 +88,15 @@ tablesplusplus/
         │   ├── mysql.rs       # MySQL impl.
         │   └── pool.rs        # Connection pool registry.
         ├── secrets/           # Keyring wrapper.
-        ├── ssh/               # SSH tunnel management.
+        ├── config/            # Local non-secret connection metadata store (connections.json).
         └── error.rs           # Unified AppError + serde-serializable error payloads.
 ```
+
+> Implemented layout notes (Phase 3): the backend entry is `src-tauri/src/lib.rs`
+> (`tablesplusplus_lib::run`) with a thin `main.rs`. Tauri 2 capabilities live in
+> `src-tauri/capabilities/default.json`. SSH tunneling is designed but **not yet
+> implemented** — `ssh/` will be added when it lands; `connect` errors clearly if an SSH
+> config is present. The detailed Phase 2 design lives in `docs/architecture.md`.
 
 > If the actual layout diverges from this during the build, **update this section** rather than
 > letting the doc drift.
@@ -266,11 +272,16 @@ Both `PostgresClient` and `MysqlClient` implement it. Commands depend on `dyn Db
 ```bash
 # Frontend
 npm install
-npm run dev            # Vite dev server
+npm run dev            # Vite dev server (port 1420)
 
 # Desktop app (Tauri) — runs Rust backend + frontend
 npm run tauri dev      # Dev build with HMR
 npm run tauri build    # Production bundle
+
+# Linux only: install the Tauri webview/system deps first (macOS/Windows need none):
+#   sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev \
+#     libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libayatana-appindicator3-dev \
+#     build-essential libssl-dev libxdo-dev pkg-config
 
 # Rust quality gates
 cargo fmt --all -- --check
@@ -324,4 +335,17 @@ npm run typecheck
 > Append dated entries as issues are found and resolved. Format:
 > `- [YYYY-MM-DD] <platform> — <symptom> → <fix>`
 
-_(none yet)_
+- [2026-06-05] Linux — `cargo check`/`tauri dev` fail without GTK/WebKit system libs
+  (`webkit2gtk-4.1` missing) → install the apt packages listed in §8. macOS/Windows need none.
+- [2026-06-05] All — `@monaco-editor/react` loads Monaco from a **CDN** by default, which
+  breaks the offline desktop app and our strict CSP → bundle it locally: depend on
+  `monaco-editor`, configure `self.MonacoEnvironment` + the editor `?worker`, and call
+  `loader.config({ monaco })` (see `src/lib/monaco.ts`, imported first in `main.tsx`).
+  Trade-off: the main JS chunk is ~3.6 MB (~950 KB gzip). Trimming Monaco to the editor
+  core + SQL only is an open optimization.
+- [2026-06-05] All — ESLint 8.57 in this env errors on `eslint . --ext` ("No files
+  matching pattern") → the `lint` script uses an explicit glob `"src/**/*.{ts,tsx}"`.
+- [2026-06-05] All — TLS uses **native-tls** for both drivers (SChannel/Secure Transport/
+  OpenSSL), which fits the cross-platform desktop target. v1 simplifications: SSL `prefer`
+  is treated like `disable`; `verifyCa`/`verifyFull` both do full verification (see
+  docs/architecture.md §11).
