@@ -31,7 +31,7 @@ Non-negotiable product qualities:
 | Backend | **Rust** (stable, 2021 edition) | App lifecycle, drivers, keyring, SSH, pooling. |
 | Async runtime | **tokio** | Single shared multi-threaded runtime. |
 | Postgres driver | **tokio-postgres** + **deadpool-postgres** | Async, pooled. |
-| MySQL driver | **mysql_async** + **deadpool** | Async, pooled. |
+| MySQL driver | **mysql_async** | Async; uses `mysql_async`'s built-in pool (not deadpool). |
 | Secrets | **keyring** crate | OS-native: Keychain (macOS), Credential Manager (Windows), Secret Service (Linux). |
 | SSH tunneling | **russh** (or `ssh2` fallback) | Optional per-connection tunnel. |
 | Serialization | **serde** / **serde_json** | Generic row/column JSON across the IPC bridge. |
@@ -138,8 +138,8 @@ tablesplusplus/
   maps `connection_id → pool`. `DashMap` is already internally concurrent — do **not** wrap it in
   an outer `Mutex`/`RwLock`, which would serialize access and defeat its purpose.
 - `connect()` resolves the secret from keyring, opens (optionally through an SSH tunnel) a pool
-  via deadpool, and stores it in the registry. Subsequent queries check out a connection from
-  the pool; they never reconnect from scratch.
+  (deadpool for Postgres; `mysql_async`'s built-in pool for MySQL), and stores it in the registry.
+  Subsequent queries check out a connection from the pool; they never reconnect from scratch.
 - Pool sizing: small by default (e.g. max 5–10) to stay light. Configurable later.
 - `disconnect()` removes the pool from the registry and closes it; the SSH tunnel (if any) is
   torn down with it.
