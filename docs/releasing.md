@@ -53,7 +53,10 @@ OS shows a one-time warning on first launch).
 
 ## Cutting a release
 
-1. Bump the version in `src-tauri/tauri.conf.json` (and `package.json`).
+1. Bump the version in **all three** manifests so they stay in sync: `package.json`,
+   `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` (the updater compares the
+   `tauri.conf.json` version). Then refresh the lockfiles: `npm install` updates
+   `package-lock.json`, and `cargo check` inside `src-tauri` updates `Cargo.lock`.
 2. Tag and push:
 
    ```bash
