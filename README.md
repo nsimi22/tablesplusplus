@@ -59,16 +59,19 @@ SSL/TLS modes are first-class per connection (via `native-tls`). SSH tunneling i
 ## Install
 
 Pre-built installers are attached to each
-[GitHub Release](https://github.com/nsimi22/tablesplusplus/releases):
+[GitHub Release](https://github.com/nsimi22/tablesplusplus/releases) — current version: **v0.1.0**.
 
-| Platform | Artifact |
+| Platform | Download |
 |----------|----------|
-| macOS | `.dmg` / `.app` (universal) |
-| Windows | `.msi` / `.exe` |
-| Linux | `.AppImage` / `.deb` / `.rpm` |
+| macOS (universal — Apple Silicon + Intel) | [`.dmg`](https://github.com/nsimi22/tablesplusplus/releases/download/v0.1.0/Tables%2B%2B_0.1.0_universal.dmg) |
+| Windows | [`.msi`](https://github.com/nsimi22/tablesplusplus/releases/download/v0.1.0/Tables%2B%2B_0.1.0_x64_en-US.msi) / [`.exe`](https://github.com/nsimi22/tablesplusplus/releases/download/v0.1.0/Tables%2B%2B_0.1.0_x64-setup.exe) |
+| Linux | [`.AppImage`](https://github.com/nsimi22/tablesplusplus/releases/download/v0.1.0/Tables%2B%2B_0.1.0_amd64.AppImage) / [`.deb`](https://github.com/nsimi22/tablesplusplus/releases/download/v0.1.0/Tables%2B%2B_0.1.0_amd64.deb) / [`.rpm`](https://github.com/nsimi22/tablesplusplus/releases/download/v0.1.0/Tables%2B%2B-0.1.0-1.x86_64.rpm) |
 
-> First launch of an **unsigned** build may show an OS warning (Gatekeeper / SmartScreen) until
-> code-signing certificates are configured — see [`docs/releasing.md`](./docs/releasing.md).
+The macOS build is **signed and notarized**; once installed, the app keeps itself current via
+[auto-updates](#auto-updates), so these links only matter the first time.
+
+> The **Windows** build is currently unsigned, so SmartScreen shows a one-time warning
+> ("More info → Run anyway"). macOS builds are Developer ID-signed and notarized — no warning.
 
 Prefer building it yourself? See [Development](#development).
 
