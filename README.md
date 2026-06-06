@@ -31,6 +31,14 @@ keyring-backed secret store.
 See [`CLAUDE.md`](./CLAUDE.md) for the engineering guide and
 [`docs/architecture.md`](./docs/architecture.md) for the driver/IPC design.
 
+## Download & auto-updates
+
+Tables++ ships as a native installer per platform (`.dmg`/`.app`, `.msi`/`.exe`,
+`.AppImage`/`.deb`/`.rpm`) and updates itself in place via Tauri's signed updater — on launch it
+checks for a newer release and offers **Install & Restart**. Releases are built by a GitHub
+Actions workflow (`.github/workflows/release.yml`) on a `v*` tag. See
+[`docs/releasing.md`](./docs/releasing.md) for the signing-key setup and release flow.
+
 ## Develop
 
 ```bash

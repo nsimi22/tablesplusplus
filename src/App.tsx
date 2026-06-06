@@ -1,5 +1,6 @@
 import { ConnectionHub } from "@/features/connections/ConnectionHub";
 import { Workspace } from "@/features/workspace/Workspace";
+import { AppUpdater } from "@/features/updates/AppUpdater";
 import { useWorkspaceStore } from "@/store/useWorkspaceStore";
 
 export default function App() {
@@ -8,6 +9,7 @@ export default function App() {
   return (
     <div className="h-full w-full bg-background text-foreground">
       {activeConnectionId ? <Workspace /> : <ConnectionHub />}
+      <AppUpdater />
     </div>
   );
 }

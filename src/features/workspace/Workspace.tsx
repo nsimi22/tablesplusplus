@@ -2,6 +2,7 @@ import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { Database, LogOut, TerminalSquare, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import type { ConnectionConfig } from "@/lib/types";
 import { useWorkspaceStore, type WorkspaceTab } from "@/store/useWorkspaceStore";
 import { useDisconnect } from "@/features/connections/useConnections";
@@ -49,6 +50,7 @@ export function Workspace() {
           {connection.host}:{connection.port}/{connection.database}
         </span>
         <div className="ml-auto flex items-center gap-1">
+          <ThemeToggle />
           <Button size="sm" variant="ghost" onClick={openQueryTab}>
             <TerminalSquare className="h-4 w-4" />
             New Query

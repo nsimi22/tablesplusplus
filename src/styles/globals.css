@@ -7,7 +7,40 @@
  * consumed by Tailwind tokens (tailwind.config.ts). No component should hardcode hex.
  */
 @layer base {
-  :root,
+  /* Light theme (default :root). The app leans dark — html ships with `class="dark"`. */
+  :root {
+    --background: 210 20% 99%;
+    --foreground: 222 24% 16%;
+
+    --surface: 210 20% 97%;
+    --surface-raised: 0 0% 100%;
+
+    --muted: 210 16% 92%;
+    --muted-foreground: 215 14% 40%;
+
+    --border: 214 18% 87%;
+    --input: 214 18% 83%;
+    --ring: 210 80% 50%;
+
+    --primary: 210 82% 50%;
+    --primary-foreground: 0 0% 100%;
+
+    --accent: 210 16% 93%;
+    --accent-foreground: 222 24% 18%;
+
+    --destructive: 0 70% 48%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 148 52% 38%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 35 92% 45%;
+    --warning-foreground: 0 0% 100%;
+
+    --radius: 0.5rem;
+  }
+
+  /* Premium, low-contrast dark theme — applied when html has `class="dark"`. */
   .dark {
     --background: 222 16% 9%;
     --foreground: 210 14% 88%;
