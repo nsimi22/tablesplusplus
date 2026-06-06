@@ -1,6 +1,7 @@
 //! Tables++ backend library entry. Builds the Tauri app, wires shared state, and registers
 //! the command handlers.
 
+mod ai;
 mod commands;
 mod config;
 mod db;
@@ -9,6 +10,7 @@ mod secrets;
 
 use tauri::Manager;
 
+use crate::config::ai_settings::AiSettingsStore;
 use crate::config::ConfigStore;
 use crate::db::pool::PoolRegistry;
 
@@ -23,6 +25,7 @@ pub fn run() {
                 .unwrap_or_else(|_| std::path::PathBuf::from("."));
             let store = ConfigStore::load(config_dir.join("connections.json"));
             app.manage(store);
+            app.manage(AiSettingsStore::load(config_dir.join("ai.json")));
             app.manage(PoolRegistry::new());
             Ok(())
         })
@@ -36,6 +39,9 @@ pub fn run() {
             commands::disconnect,
             commands::get_schema,
             commands::execute_query,
+            commands::get_ai_settings,
+            commands::save_ai_settings,
+            commands::ai_generate,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Tables++ application");

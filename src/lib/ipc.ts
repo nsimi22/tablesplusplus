@@ -7,6 +7,8 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AiSettings,
+  AiSettingsInput,
   ConnectionConfig,
   ConnectionInput,
   QueryResult,
@@ -77,4 +79,25 @@ export function executeQuery(args: {
     sql: args.sql,
     params: args.params ?? [],
   });
+}
+
+// ---- AI assistant ----
+
+/** Current AI provider/model and whether a key is stored (never returns the key). */
+export function getAiSettings(): Promise<AiSettings> {
+  return invoke<AiSettings>("get_ai_settings");
+}
+
+/** Save provider/model; a non-empty `apiKey` is written to the OS keyring. */
+export function saveAiSettings(input: AiSettingsInput): Promise<AiSettings> {
+  return invoke<AiSettings>("save_ai_settings", {
+    provider: input.provider,
+    model: input.model,
+    apiKey: input.apiKey,
+  });
+}
+
+/** Run a single completion (system + prompt → text) via the configured provider. */
+export function aiGenerate(args: { system: string; prompt: string }): Promise<string> {
+  return invoke<string>("ai_generate", { system: args.system, prompt: args.prompt });
 }

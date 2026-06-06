@@ -6,6 +6,24 @@
 
 export type Engine = "postgres" | "mysql";
 
+// ---- AI assistant (mirrors src-tauri/src/ai/mod.rs + commands/ai.rs) ----
+
+export type AiProvider = "anthropic" | "openAi" | "openRouter";
+
+/** AI settings as returned by the backend — the key itself is never sent back. */
+export interface AiSettings {
+  provider: AiProvider;
+  model: string;
+  hasKey: boolean;
+}
+
+/** Inbound settings payload; `apiKey` is written to the keyring and never echoed. */
+export interface AiSettingsInput {
+  provider: AiProvider;
+  model: string;
+  apiKey: string | null;
+}
+
 export type SslMode = "disable" | "prefer" | "require" | "verifyCa" | "verifyFull";
 
 export interface SshConfig {

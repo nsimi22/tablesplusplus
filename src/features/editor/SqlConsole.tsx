@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Editor, { type OnMount } from "@monaco-editor/react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { Play } from "lucide-react";
+import { Lightbulb, Play, Settings2, Sparkles, Wand2, Wrench, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import { Spinner } from "@/components/ui/Spinner";
 import { errorMessage, type ConnectionConfig, type QueryResult, type Schema } from "@/lib/types";
 import { useWorkspaceStore } from "@/store/useWorkspaceStore";
 import { useExecuteSql, useSchema } from "@/features/workspace/hooks";
+import { useAiGenerate } from "@/features/ai/useAi";
+import { AiSettingsDialog } from "@/features/ai/AiSettingsDialog";
+import { explainPrompts, fixPrompts, stripSqlFences, textToSqlPrompts } from "@/features/ai/prompts";
 import { ResultView } from "./ResultView";
 
 type MonacoApi = Parameters<OnMount>[1];
@@ -87,14 +91,113 @@ export function SqlConsole({
   const exec = useExecuteSql(connection.id);
   const { data: schema } = useSchema(connection.id);
 
+  const ai = useAiGenerate();
   const editorRef = useRef<CodeEditor | null>(null);
   const runRef = useRef<() => void>(() => {});
   const [result, setResult] = useState<QueryResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiNote, setAiNote] = useState<string | null>(null);
+  const [showAiSettings, setShowAiSettings] = useState(false);
 
   useEffect(() => {
     activeSchema = schema;
   }, [schema]);
+
+  /** The selected SQL if any, else the full editor contents. */
+  const currentSql = useCallback((): string => {
+    const ed = editorRef.current;
+    if (!ed) return sql;
+    const model = ed.getModel();
+    const selection = ed.getSelection();
+    const text =
+      selection && model && !selection.isEmpty() ? model.getValueInRange(selection) : ed.getValue();
+    return text.trim();
+  }, [sql]);
+
+  /** Capture the edit target *before* the async request so a selection change mid-flight can't
+   *  silently widen a "replace selection" into "replace whole document".
+   *  "insert" → the selection (empty = cursor); "replace" → the selection, or the whole doc. */
+  const captureRange = useCallback(
+    (mode: "insert" | "replace"): import("monaco-editor").IRange | null => {
+      const ed = editorRef.current;
+      const model = ed?.getModel();
+      if (!ed || !model) return null;
+      const selection = ed.getSelection();
+      if (mode === "replace") {
+        return selection && !selection.isEmpty() ? selection : model.getFullModelRange();
+      }
+      return selection ?? model.getFullModelRange();
+    },
+    [],
+  );
+
+  /** Apply AI output to the captured range via Monaco (preserves surrounding content + undo). */
+  const applyEdit = useCallback(
+    (range: import("monaco-editor").IRange | null, text: string) => {
+      const ed = editorRef.current;
+      if (!ed || !range) {
+        setTabSql(tabId, text);
+        return;
+      }
+      ed.executeEdits("ai-assistant", [{ range, text, forceMoveMarkers: true }]);
+      ed.focus();
+    },
+    [tabId, setTabSql],
+  );
+
+  const generateSql = useCallback(async () => {
+    const request = aiPrompt.trim();
+    if (!request) return;
+    setAiError(null);
+    setAiNote(null);
+    const range = captureRange("insert");
+    try {
+      const { system, prompt } = textToSqlPrompts({ engine: connection.engine, schema, request });
+      const sqlText = stripSqlFences(await ai.mutateAsync({ system, prompt }));
+      if (!sqlText) {
+        setAiError("The model returned an empty response. Try rephrasing your request.");
+        return;
+      }
+      applyEdit(range, sqlText);
+    } catch (err) {
+      setAiError(errorMessage(err));
+    }
+  }, [aiPrompt, ai, connection.engine, schema, captureRange, applyEdit]);
+
+  const explainSql = useCallback(async () => {
+    const target = currentSql();
+    if (!target) return;
+    setAiError(null);
+    setAiNote(null);
+    try {
+      const { system, prompt } = explainPrompts({ engine: connection.engine, sql: target });
+      const text = await ai.mutateAsync({ system, prompt });
+      setAiNote(text);
+    } catch (err) {
+      setAiError(errorMessage(err));
+    }
+  }, [currentSql, ai, connection.engine]);
+
+  const fixSql = useCallback(async () => {
+    const target = currentSql();
+    if (!target || !error) return;
+    setAiError(null);
+    setAiNote(null);
+    const range = captureRange("replace");
+    try {
+      const { system, prompt } = fixPrompts({ engine: connection.engine, sql: target, error });
+      const sqlText = stripSqlFences(await ai.mutateAsync({ system, prompt }));
+      if (!sqlText) {
+        setAiError("The model returned an empty response. Try again.");
+        return;
+      }
+      applyEdit(range, sqlText);
+    } catch (err) {
+      setAiError(errorMessage(err));
+    }
+  }, [currentSql, error, ai, connection.engine, captureRange, applyEdit]);
 
   const run = useCallback(async () => {
     const ed = editorRef.current;
@@ -131,13 +234,71 @@ export function SqlConsole({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
-        <span className="text-xs text-muted-foreground">⌘/Ctrl + Enter to run</span>
-        <Button size="sm" onClick={run} disabled={exec.isPending}>
-          {exec.isPending ? <Spinner /> : <Play className="h-3.5 w-3.5" />}
-          Run
+      <div className="flex items-center gap-2 border-b border-border px-2 py-1.5">
+        <Sparkles className="h-4 w-4 shrink-0 text-primary" />
+        <Input
+          value={aiPrompt}
+          onChange={(e) => setAiPrompt(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && !ai.isPending && generateSql()}
+          placeholder="Ask AI to write SQL…"
+          className="h-8 max-w-md text-xs"
+        />
+        <Button size="sm" variant="secondary" onClick={generateSql} disabled={ai.isPending}>
+          {ai.isPending ? <Spinner /> : <Wand2 className="h-3.5 w-3.5" />}
+          Generate
         </Button>
+        <Button size="sm" variant="ghost" onClick={explainSql} disabled={ai.isPending}>
+          <Lightbulb className="h-3.5 w-3.5" />
+          Explain
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={fixSql}
+          disabled={ai.isPending || !error}
+          title={error ? "Fix the failed query with AI" : "Run a query that errors to enable Fix"}
+        >
+          <Wrench className="h-3.5 w-3.5" />
+          Fix
+        </Button>
+        <div className="ml-auto flex items-center gap-2">
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => setShowAiSettings(true)}
+            aria-label="AI settings"
+            title="AI settings"
+          >
+            <Settings2 className="h-4 w-4" />
+          </Button>
+          <span className="hidden text-xs text-muted-foreground sm:inline">⌘/Ctrl + Enter</span>
+          <Button size="sm" onClick={run} disabled={exec.isPending}>
+            {exec.isPending ? <Spinner /> : <Play className="h-3.5 w-3.5" />}
+            Run
+          </Button>
+        </div>
       </div>
+
+      {aiError ? (
+        <div className="flex items-start gap-2 border-b border-border bg-destructive/10 px-3 py-1.5 text-xs text-destructive">
+          <span className="selectable flex-1 break-words">{aiError}</span>
+          <button onClick={() => setAiError(null)} aria-label="Dismiss">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ) : null}
+
+      {aiNote ? (
+        <div className="flex items-start gap-2 border-b border-border bg-primary/10 px-3 py-1.5 text-xs">
+          <Lightbulb className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+          <span className="selectable flex-1 whitespace-pre-wrap break-words">{aiNote}</span>
+          <button onClick={() => setAiNote(null)} aria-label="Dismiss">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ) : null}
+
+      <AiSettingsDialog open={showAiSettings} onClose={() => setShowAiSettings(false)} />
 
       <PanelGroup direction="vertical" className="flex-1">
         <Panel defaultSize={55} minSize={20}>

@@ -33,6 +33,7 @@ Non-negotiable product qualities:
 | Postgres driver | **tokio-postgres** + **deadpool-postgres** | Async, pooled. |
 | MySQL driver | **mysql_async** | Async; uses `mysql_async`'s built-in pool (not deadpool). |
 | Secrets | **keyring** crate | OS-native: Keychain (macOS), Credential Manager (Windows), Secret Service (Linux). |
+| AI assistant | **reqwest** (rustls) | Optional, bring-your-own-key gateway to Anthropic / OpenAI / OpenRouter for SQL tools. |
 | SSH tunneling | **russh** (or `ssh2` fallback) | Optional per-connection tunnel. |
 | Serialization | **serde** / **serde_json** | Generic row/column JSON across the IPC bridge. |
 | Frontend | **React 18 + TypeScript** | Strict TS, function components + hooks only. |
@@ -87,8 +88,9 @@ tablesplusplus/
         │   ├── postgres.rs    # Postgres impl.
         │   ├── mysql.rs       # MySQL impl.
         │   └── pool.rs        # Connection pool registry.
-        ├── secrets/           # Keyring wrapper.
-        ├── config/            # Local non-secret connection metadata store (connections.json).
+        ├── secrets/           # Keyring wrapper (DB + AI provider keys).
+        ├── ai/                # AI provider gateway (Anthropic/OpenAI/OpenRouter) over HTTP.
+        ├── config/            # Local non-secret stores (connections.json, ai.json).
         └── error.rs           # Unified AppError + serde-serializable error payloads.
 ```
 
@@ -362,3 +364,10 @@ npm run typecheck
   next `connect` rebuilds against the new host/port/credentials; an in-use connection must be
   reopened after editing. Quick-filter `<`/`>` compare numerically on numeric columns (typed
   bind), and as text (lexicographic, correct for ISO dates) otherwise.
+- [2026-06-06] AI — Optional, bring-your-own-key SQL assistant (Text-to-SQL / Explain / Fix).
+  Provider calls run in the **Rust backend** via `reqwest` (not the webview), so the strict CSP
+  needs no `connect-src` exception; the API key lives in the OS keyring (`ai:{provider}:apiKey`),
+  provider+model in `ai.json`. Anthropic requests omit `temperature`/`thinking` (removed on the
+  latest Opus models) and default to model `claude-opus-4-8`; OpenAI/OpenRouter use the
+  OpenAI-compatible `/chat/completions` shape. The frontend builds a compact schema context for
+  Text-to-SQL and strips Markdown fences from the model output.

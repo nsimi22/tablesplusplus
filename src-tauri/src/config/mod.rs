@@ -3,6 +3,8 @@
 //! Persisted as `connections.json` in the app config dir. Secrets are NOT stored here —
 //! only in the OS keyring. Managed as Tauri `State<ConfigStore>`.
 
+pub mod ai_settings;
+
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
 

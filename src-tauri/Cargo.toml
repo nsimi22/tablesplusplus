@@ -40,6 +40,9 @@ rust_decimal = { version = "1", features = ["db-postgres"] }
 # MySQL — async; uses mysql_async's built-in pool (docs/architecture.md §6.2).
 mysql_async = "0.34"
 
+# AI providers (Anthropic / OpenAI / OpenRouter) over HTTP. rustls keeps it self-contained.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
 [features]
 # Default Tauri custom-protocol used in release builds.
 custom-protocol = ["tauri/custom-protocol"]
