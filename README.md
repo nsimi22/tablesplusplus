@@ -53,8 +53,9 @@ optional, bring-your-own-key AI assistant for SQL.
 | **PostgreSQL** | `tokio-postgres` + `deadpool` | Async, pooled; `prepare_cached` for repeated queries. |
 | **MySQL** | `mysql_async` | Async; the driver's built-in pool. |
 
-SSL/TLS modes are first-class per connection (via `native-tls`). SSH tunneling is designed but
-**not yet implemented** — see [Status & roadmap](#status--roadmap).
+SSL/TLS modes are first-class per connection (via `native-tls`), and each connection can
+optionally tunnel through an **SSH bastion** (password or private-key auth) — see the v1
+caveats in [Status & roadmap](#status--roadmap).
 
 ## Install
 
@@ -204,11 +205,14 @@ Full instructions — including the updater signing key and optional OS code-sig
 ## Status & roadmap
 
 **Done:** connection management + keyring, schema tree, virtualized grid with editing/commit,
-SQL console with autocomplete, AI assistant, dark/light themes, packaging + auto-update.
+SQL console with autocomplete, AI assistant, SSH tunneling, dark/light themes,
+packaging + auto-update.
 
 **Not yet implemented / known limitations:**
-- **SSH tunneling** is designed but not implemented — `connect` errors clearly if an SSH config
-  is present.
+- **SSH tunneling** v1 caveats: the bastion's host key is accepted **without** `known_hosts`
+  verification, `agent` auth isn't supported (password / private key only), and over a tunnel
+  the database sees a `127.0.0.1` peer — so pair a tunnel with a non-verifying SSL mode
+  (`verifyCa`/`verifyFull` will fail hostname checks).
 - **TLS** v1 simplifications: `prefer` is treated like `disable`; `verifyCa`/`verifyFull` both do
   full verification (`require` encrypts without authenticating, matching libpq/MySQL semantics).
 - Large result sets are **paged**; a streaming/cursor protocol is a future optimization.
