@@ -67,8 +67,12 @@ pub async fn open_tunnel(
     secret: Option<String>,
 ) -> Result<SshTunnel, AppError> {
     let config = Arc::new(client::Config::default());
-    let mut handle = client::connect(config, (ssh.host.as_str(), ssh.port), Handler)
+    // Bound the connect attempt so an offline/firewalled bastion fails fast instead of hanging
+    // on the OS TCP timeout (30-75s).
+    let connect_future = client::connect(config, (ssh.host.as_str(), ssh.port), Handler);
+    let mut handle = tokio::time::timeout(std::time::Duration::from_secs(10), connect_future)
         .await
+        .map_err(|_| AppError::new(ErrorKind::Timeout, "SSH connection timed out"))?
         .map_err(ssh_err)?;
 
     let authenticated = match ssh.auth_method {
@@ -85,7 +89,9 @@ pub async fn open_tunnel(
                 .key_path
                 .as_deref()
                 .ok_or_else(|| AppError::new(ErrorKind::Ssh, "SSH private key path is required"))?;
-            let key = russh_keys::load_secret_key(path, secret.as_deref()).map_err(|e| {
+            // Rust file APIs don't expand `~`, so a path like `~/.ssh/id_ed25519` would fail.
+            let expanded = expand_tilde(path);
+            let key = russh_keys::load_secret_key(&expanded, secret.as_deref()).map_err(|e| {
                 AppError::new(ErrorKind::Ssh, "Failed to load the SSH private key")
                     .with_detail(e.to_string())
             })?;
@@ -116,7 +122,13 @@ pub async fn open_tunnel(
         loop {
             let (mut local, peer) = match listener.accept().await {
                 Ok(pair) => pair,
-                Err(_) => break,
+                // A transient accept error (e.g. EMFILE, a reset peer) shouldn't permanently kill
+                // the tunnel. Back off briefly and keep serving; the loop is torn down via
+                // `accept_task.abort()` on Drop, not by erroring out here.
+                Err(_) => {
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    continue;
+                }
             };
             let sess = sess.clone();
             let host = target_host.clone();
@@ -145,4 +157,15 @@ pub async fn open_tunnel(
         accept_task,
         _session: session,
     })
+}
+
+/// Expand a leading `~/` to the user's home directory (`HOME`, falling back to `USERPROFILE` on
+/// Windows). Other paths are returned unchanged.
+fn expand_tilde(path: &str) -> std::path::PathBuf {
+    if let Some(stripped) = path.strip_prefix("~/") {
+        if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
+            return std::path::PathBuf::from(home).join(stripped);
+        }
+    }
+    std::path::PathBuf::from(path)
 }

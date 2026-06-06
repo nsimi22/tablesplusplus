@@ -23,7 +23,17 @@ pub async fn save_connection(
 ) -> Result<ConnectionConfig, AppError> {
     let id = uuid::Uuid::new_v4().to_string();
     let wrote_secret = write_secret_if_present(&id, input.password.as_deref())?;
-    let wrote_ssh = write_ssh_secret_if_present(&id, input.ssh_secret.as_deref())?;
+    // If the SSH secret write fails, roll back the password we just wrote so we don't leave an
+    // orphaned keyring entry for a connection that was never persisted.
+    let wrote_ssh = match write_ssh_secret_if_present(&id, input.ssh_secret.as_deref()) {
+        Ok(wrote) => wrote,
+        Err(e) => {
+            if wrote_secret {
+                let _ = secrets::delete_password(&id);
+            }
+            return Err(e);
+        }
+    };
     let cfg = input.into_config(id.clone());
     if let Err(e) = store.upsert(cfg.clone()) {
         // Don't leave orphaned keyring entries for a connection that was never persisted.
