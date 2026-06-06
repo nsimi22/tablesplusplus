@@ -9,6 +9,10 @@
  */
 import { loader } from "@monaco-editor/react";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
+// `editor.all` registers the core editor contributions (suggest/autocomplete, find, hover,
+// context menu, folding, …) without the heavy language services. Required for the schema-aware
+// completion widget in the SQL console.
+import "monaco-editor/esm/vs/editor/editor.all";
 import "monaco-editor/esm/vs/basic-languages/sql/sql.contribution";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 
