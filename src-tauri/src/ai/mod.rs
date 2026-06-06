@@ -65,9 +65,15 @@ pub async fn complete(
     system: &str,
     prompt: &str,
 ) -> Result<String, AppError> {
-    // Reuse one client so connection pools are shared across calls.
+    // Reuse one client so connection pools are shared across calls; a request timeout means a
+    // stalled provider surfaces an error instead of spinning forever.
     static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
-    let client = CLIENT.get_or_init(reqwest::Client::new);
+    let client = CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(60))
+            .build()
+            .unwrap_or_default()
+    });
     match provider {
         AiProvider::Anthropic => anthropic_complete(client, model, api_key, system, prompt).await,
         AiProvider::OpenAi => {

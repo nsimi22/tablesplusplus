@@ -22,11 +22,12 @@ export function buildSchemaContext(schema: Schema | undefined): string {
 }
 
 /** Extract SQL from the model output, unwrapping a Markdown code block even when it's
- *  surrounded by conversational text (no anchors). */
+ *  surrounded by conversational text. Uses the LAST fenced block — when a model shows the
+ *  original query first and the answer second, the answer is last. */
 export function stripSqlFences(text: string): string {
   const out = text.trim();
-  const fence = out.match(/```(?:sql)?\s*([\s\S]*?)\s*```/i);
-  return fence ? fence[1].trim() : out;
+  const blocks = [...out.matchAll(/```(?:sql)?\s*([\s\S]*?)\s*```/gi)];
+  return blocks.length ? blocks[blocks.length - 1][1].trim() : out;
 }
 
 export function textToSqlPrompts(args: {

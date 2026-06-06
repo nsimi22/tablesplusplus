@@ -116,22 +116,31 @@ export function SqlConsole({
     return text.trim();
   }, [sql]);
 
-  /** Apply AI output via Monaco so existing content and undo/redo history are preserved.
-   *  "insert" replaces the selection (or inserts at the cursor); "replace" swaps the selection,
-   *  or the whole document when nothing is selected. Falls back to the store if no editor. */
-  const applyToEditor = useCallback(
-    (text: string, mode: "insert" | "replace") => {
+  /** Capture the edit target *before* the async request so a selection change mid-flight can't
+   *  silently widen a "replace selection" into "replace whole document".
+   *  "insert" → the selection (empty = cursor); "replace" → the selection, or the whole doc. */
+  const captureRange = useCallback(
+    (mode: "insert" | "replace"): import("monaco-editor").IRange | null => {
       const ed = editorRef.current;
       const model = ed?.getModel();
-      if (!ed || !model) {
+      if (!ed || !model) return null;
+      const selection = ed.getSelection();
+      if (mode === "replace") {
+        return selection && !selection.isEmpty() ? selection : model.getFullModelRange();
+      }
+      return selection ?? model.getFullModelRange();
+    },
+    [],
+  );
+
+  /** Apply AI output to the captured range via Monaco (preserves surrounding content + undo). */
+  const applyEdit = useCallback(
+    (range: import("monaco-editor").IRange | null, text: string) => {
+      const ed = editorRef.current;
+      if (!ed || !range) {
         setTabSql(tabId, text);
         return;
       }
-      const selection = ed.getSelection();
-      const range =
-        mode === "replace" && (!selection || selection.isEmpty())
-          ? model.getFullModelRange()
-          : (selection ?? model.getFullModelRange());
       ed.executeEdits("ai-assistant", [{ range, text, forceMoveMarkers: true }]);
       ed.focus();
     },
@@ -143,14 +152,19 @@ export function SqlConsole({
     if (!request) return;
     setAiError(null);
     setAiNote(null);
+    const range = captureRange("insert");
     try {
       const { system, prompt } = textToSqlPrompts({ engine: connection.engine, schema, request });
-      const text = await ai.mutateAsync({ system, prompt });
-      applyToEditor(stripSqlFences(text), "insert");
+      const sqlText = stripSqlFences(await ai.mutateAsync({ system, prompt }));
+      if (!sqlText) {
+        setAiError("The model returned an empty response. Try rephrasing your request.");
+        return;
+      }
+      applyEdit(range, sqlText);
     } catch (err) {
       setAiError(errorMessage(err));
     }
-  }, [aiPrompt, ai, connection.engine, schema, applyToEditor]);
+  }, [aiPrompt, ai, connection.engine, schema, captureRange, applyEdit]);
 
   const explainSql = useCallback(async () => {
     const target = currentSql();
@@ -171,14 +185,19 @@ export function SqlConsole({
     if (!target || !error) return;
     setAiError(null);
     setAiNote(null);
+    const range = captureRange("replace");
     try {
       const { system, prompt } = fixPrompts({ engine: connection.engine, sql: target, error });
-      const text = await ai.mutateAsync({ system, prompt });
-      applyToEditor(stripSqlFences(text), "replace");
+      const sqlText = stripSqlFences(await ai.mutateAsync({ system, prompt }));
+      if (!sqlText) {
+        setAiError("The model returned an empty response. Try again.");
+        return;
+      }
+      applyEdit(range, sqlText);
     } catch (err) {
       setAiError(errorMessage(err));
     }
-  }, [currentSql, error, ai, connection.engine, applyToEditor]);
+  }, [currentSql, error, ai, connection.engine, captureRange, applyEdit]);
 
   const run = useCallback(async () => {
     const ed = editorRef.current;

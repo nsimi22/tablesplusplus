@@ -68,11 +68,13 @@ export function AiSettingsDialog({ open, onClose }: { open: boolean; onClose: ()
   const onProviderChange = (next: AiProvider) => {
     setProvider(next);
     setModel(PROVIDERS.find((p) => p.value === next)?.defaultModel ?? "");
+    // Clear the key field so a key typed for one provider isn't saved to another's slot.
+    setApiKey("");
     setStatus({ state: "idle" });
   };
 
   const persist = async () => {
-    await save.mutateAsync({ provider, model, apiKey: apiKey || null });
+    await save.mutateAsync({ provider, model, apiKey: apiKey.trim() || null });
   };
 
   const onSave = async () => {
@@ -100,15 +102,19 @@ export function AiSettingsDialog({ open, onClose }: { open: boolean; onClose: ()
     }
   };
 
-  const keyStored = settings?.hasKey ?? false;
+  // Only meaningful for the provider the stored key belongs to.
+  const keyStored = !!settings?.hasKey && provider === settings?.provider;
 
   return (
     <Dialog open={open} onClose={onClose} title="AI Assistant">
       <div className="space-y-4 p-4">
-        <p className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Sparkles className="h-3.5 w-3.5 text-primary" />
-          Connect a provider to generate, explain, and fix SQL. Your key is stored in the OS
-          keyring — never on disk.
+        <p className="flex items-start gap-2 text-xs text-muted-foreground">
+          <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+          <span>
+            Connect a provider to generate, explain, and fix SQL. Your key is stored in the OS
+            keyring — never on disk. The schema (table/column names) and any error messages you
+            ask it to fix are sent to your provider; query results are never sent.
+          </span>
         </p>
 
         <div className="space-y-1.5">
