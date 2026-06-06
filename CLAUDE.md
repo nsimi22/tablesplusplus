@@ -364,6 +364,13 @@ npm run typecheck
   next `connect` rebuilds against the new host/port/credentials; an in-use connection must be
   reopened after editing. Quick-filter `<`/`>` compare numerically on numeric columns (typed
   bind), and as text (lexicographic, correct for ISO dates) otherwise.
+- [2026-06-06] Dist — Packaged installers + in-app auto-update via `tauri-plugin-updater`
+  (+ `tauri-plugin-process` for relaunch). `bundle.createUpdaterArtifacts: true`; the updater
+  `pubkey`/`endpoints` live in `tauri.conf.json` (endpoint = GitHub Releases `latest.json`). The
+  `.github/workflows/release.yml` workflow builds/signs all 3 platforms on a `v*` tag. The
+  download/verify runs in the Rust plugin (not the webview), so the strict CSP is unchanged. The
+  updater public key in config is a **placeholder** until a real key is set; see
+  `docs/releasing.md`. Theme: `:root` = light, `.dark` = dark; `useThemeStore` defaults to dark.
 - [2026-06-06] AI — Optional, bring-your-own-key SQL assistant (Text-to-SQL / Explain / Fix).
   Provider calls run in the **Rust backend** via `reqwest` (not the webview), so the strict CSP
   needs no `connect-src` exception; the API key lives in the OS keyring (`ai:{provider}:apiKey`),

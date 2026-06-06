@@ -43,6 +43,10 @@ mysql_async = "0.34"
 # AI providers (Anthropic / OpenAI / OpenRouter) over HTTP. rustls keeps it self-contained.
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
+# Auto-update + relaunch (desktop).
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+
 [features]
 # Default Tauri custom-protocol used in release builds.
 custom-protocol = ["tauri/custom-protocol"]
