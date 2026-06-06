@@ -8,7 +8,8 @@ import { Spinner } from "@/components/ui/Spinner";
 import { errorMessage, type ConnectionConfig, type QueryResult, type Schema } from "@/lib/types";
 import { useWorkspaceStore } from "@/store/useWorkspaceStore";
 import { useThemeStore } from "@/store/useThemeStore";
-import { useExecuteSql, useSchema } from "@/features/workspace/hooks";
+import { useSchema } from "@/features/workspace/hooks";
+import * as ipc from "@/lib/ipc";
 import { useAiGenerate } from "@/features/ai/useAi";
 import { AiSettingsDialog } from "@/features/ai/AiSettingsDialog";
 import { explainPrompts, fixPrompts, stripSqlFences, textToSqlPrompts } from "@/features/ai/prompts";
@@ -108,7 +109,6 @@ export function SqlConsole({
 }) {
   const sql = useWorkspaceStore((s) => s.tabs.find((t) => t.id === tabId)?.sql ?? "");
   const setTabSql = useWorkspaceStore((s) => s.setTabSql);
-  const exec = useExecuteSql(connection.id);
   const { data: schema } = useSchema(connection.id);
 
   const appTheme = useThemeStore((s) => s.theme);
@@ -127,6 +127,9 @@ export function SqlConsole({
   const runRef = useRef<() => void>(() => {});
   const [result, setResult] = useState<QueryResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [streaming, setStreaming] = useState(false);
+  const [streamedRows, setStreamedRows] = useState(0);
+  const [truncated, setTruncated] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiNote, setAiNote] = useState<string | null>(null);
@@ -231,25 +234,43 @@ export function SqlConsole({
   }, [currentSql, error, ai, connection.engine, captureRange, applyEdit]);
 
   const run = useCallback(async () => {
-    const ed = editorRef.current;
-    if (!ed) return;
-    const model = ed.getModel();
-    const selection = ed.getSelection();
-    const text =
-      selection && model && !selection.isEmpty()
-        ? model.getValueInRange(selection)
-        : ed.getValue();
-    const trimmed = text.trim();
-    if (!trimmed) return;
+    const trimmed = currentSql();
+    if (!trimmed || streaming) return;
     setError(null);
+    setResult(null);
+    setStreamedRows(0);
+    setTruncated(false);
+    setStreaming(true);
+
+    // Accumulate the streamed chunks; render the table once `done` arrives.
+    let columns: QueryResult["columns"] = [];
+    const rows: QueryResult["rows"] = [];
+    let elapsedMs = 0;
+    let rowsAffected: number | null = null;
+    let didTruncate = false;
     try {
-      const res = await exec.mutateAsync({ sql: trimmed, params: [] });
-      setResult(res);
+      await ipc.executeQueryStream({ id: connection.id, sql: trimmed, params: [] }, (chunk) => {
+        if (chunk.kind === "columns") {
+          columns = chunk.columns;
+        } else if (chunk.kind === "rows") {
+          for (const r of chunk.rows) rows.push(r);
+          setStreamedRows(rows.length);
+        } else {
+          elapsedMs = chunk.elapsedMs;
+          rowsAffected = chunk.rowsAffected;
+          didTruncate = chunk.truncated;
+        }
+      });
+      setResult({ columns, rows, rowsAffected, elapsedMs });
+      setTruncated(didTruncate);
     } catch (err) {
-      setResult(null);
+      // Surface the error; keep any rows already streamed so partial output is visible.
+      setResult(rows.length || columns.length ? { columns, rows, rowsAffected: null, elapsedMs } : null);
       setError(errorMessage(err));
+    } finally {
+      setStreaming(false);
     }
-  }, [exec]);
+  }, [currentSql, streaming, connection.id]);
 
   useEffect(() => {
     runRef.current = run;
@@ -303,8 +324,8 @@ export function SqlConsole({
             <Settings2 className="h-4 w-4" />
           </Button>
           <span className="hidden text-xs text-muted-foreground sm:inline">⌘/Ctrl + Enter</span>
-          <Button size="sm" onClick={run} disabled={exec.isPending}>
-            {exec.isPending ? <Spinner /> : <Play className="h-3.5 w-3.5" />}
+          <Button size="sm" onClick={run} disabled={streaming}>
+            {streaming ? <Spinner /> : <Play className="h-3.5 w-3.5" />}
             Run
           </Button>
         </div>
@@ -357,7 +378,13 @@ export function SqlConsole({
         <PanelResizeHandle className="h-px bg-border transition-colors data-[resize-handle-state=hover]:bg-ring" />
         <Panel defaultSize={45} minSize={15}>
           <div className="h-full overflow-hidden bg-surface">
-            <ResultView result={result} error={error} />
+            <ResultView
+              result={result}
+              error={error}
+              streaming={streaming}
+              streamedRows={streamedRows}
+              truncated={truncated}
+            />
           </div>
         </Panel>
       </PanelGroup>

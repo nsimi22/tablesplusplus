@@ -11,8 +11,9 @@ use mysql_async::prelude::Queryable;
 use mysql_async::{OptsBuilder, Params, Pool, Row, SslOpts, Value};
 
 use crate::db::client::{
-    bytes_cell, parse_routine_kind, parse_table_kind, CellValue, ColumnInfo, ColumnMeta,
-    ConnectionConfig, DbClient, QueryResult, RoutineInfo, Schema, SchemaBuilder, SslMode,
+    bytes_cell, parse_routine_kind, parse_table_kind, CellValue, ChunkSender, ColumnInfo,
+    ColumnMeta, ConnectionConfig, DbClient, QueryResult, RoutineInfo, Schema, SchemaBuilder,
+    SslMode, StreamChunk, STREAM_BATCH, STREAM_MAX_ROWS,
 };
 use crate::error::AppError;
 
@@ -130,6 +131,96 @@ impl DbClient for MysqlClient {
             rows_affected: None,
             elapsed_ms,
         })
+    }
+
+    async fn stream_query(
+        &self,
+        sql: String,
+        params: Vec<CellValue>,
+        tx: ChunkSender,
+    ) -> Result<(), AppError> {
+        // mysql_async buffers the result set, so we collect once and then forward in batches —
+        // this still bounds per-message IPC size and drives progress events, though it does not
+        // stream from the server the way the Postgres path does.
+        let started = Instant::now();
+        let mut conn = self.pool.get_conn().await?;
+        let mut qr = conn.exec_iter(sql.as_str(), to_my_params(params)).await?;
+
+        let specs: Vec<ColSpec> = qr
+            .columns_ref()
+            .iter()
+            .map(|c| ColSpec {
+                name: c.name_str().into_owned(),
+                column_type: c.column_type(),
+                length: c.column_length(),
+                charset: c.character_set(),
+            })
+            .collect();
+        let rows: Vec<Row> = qr.collect::<Row>().await?;
+        let affected = qr.affected_rows();
+        let elapsed_ms = started.elapsed().as_millis() as u64;
+
+        if specs.is_empty() {
+            let _ = tx
+                .send(StreamChunk::Done {
+                    rows_affected: Some(affected),
+                    elapsed_ms,
+                    truncated: false,
+                })
+                .await;
+            return Ok(());
+        }
+
+        let columns: Vec<ColumnMeta> = specs
+            .iter()
+            .map(|s| ColumnMeta {
+                name: s.name.clone(),
+                data_type: type_name(s.column_type).to_string(),
+                nullable: true,
+            })
+            .collect();
+        if tx.send(StreamChunk::Columns { columns }).await.is_err() {
+            return Ok(());
+        }
+
+        let mut batch: Vec<Vec<CellValue>> = Vec::with_capacity(STREAM_BATCH);
+        let mut truncated = false;
+        for (total, row) in rows.iter().enumerate() {
+            let cells: Vec<CellValue> = specs
+                .iter()
+                .enumerate()
+                .map(|(i, spec)| {
+                    let val = row.as_ref(i).cloned().unwrap_or(Value::NULL);
+                    my_cell(&val, spec)
+                })
+                .collect();
+            batch.push(cells);
+            if batch.len() >= STREAM_BATCH
+                && tx
+                    .send(StreamChunk::Rows {
+                        rows: std::mem::take(&mut batch),
+                    })
+                    .await
+                    .is_err()
+            {
+                return Ok(());
+            }
+            if total + 1 >= STREAM_MAX_ROWS {
+                truncated = true;
+                break;
+            }
+        }
+        if !batch.is_empty() {
+            let _ = tx.send(StreamChunk::Rows { rows: batch }).await;
+        }
+        let _ = tx
+            .send(StreamChunk::Done {
+                rows_affected: None,
+                elapsed_ms,
+                truncated,
+            })
+            .await;
+        Ok(())
     }
 
     async fn get_schema(&self) -> Result<Schema, AppError> {

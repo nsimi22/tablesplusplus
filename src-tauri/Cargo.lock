@@ -4493,6 +4493,7 @@ dependencies = [
  "chrono",
  "dashmap",
  "deadpool-postgres",
+ "futures-util",
  "keyring",
  "mysql_async",
  "native-tls",

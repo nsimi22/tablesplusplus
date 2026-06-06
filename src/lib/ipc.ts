@@ -5,7 +5,7 @@
  * Command names are snake_case verb-first to match the Rust #[tauri::command]
  * handlers (CLAUDE.md §5.3).
  */
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import type {
   AiSettings,
   AiSettingsInput,
@@ -13,6 +13,7 @@ import type {
   ConnectionInput,
   QueryResult,
   Schema,
+  StreamChunk,
 } from "@/lib/types";
 
 /** List all saved connections (non-secret metadata only). */
@@ -78,6 +79,24 @@ export function executeQuery(args: {
     id: args.id,
     sql: args.sql,
     params: args.params ?? [],
+  });
+}
+
+/**
+ * Stream a query's results: `onChunk` receives `columns`, then `rows` batches, then `done`.
+ * Resolves when the stream completes; rejects on error (after any partial chunks).
+ */
+export function executeQueryStream(
+  args: { id: string; sql: string; params?: import("@/lib/types").CellValue[] },
+  onChunk: (chunk: StreamChunk) => void,
+): Promise<void> {
+  const channel = new Channel<StreamChunk>();
+  channel.onmessage = onChunk;
+  return invoke<void>("execute_query_stream", {
+    id: args.id,
+    sql: args.sql,
+    params: args.params ?? [],
+    onEvent: channel,
   });
 }
 

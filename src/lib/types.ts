@@ -98,6 +98,12 @@ export interface QueryResult {
   elapsedMs: number;
 }
 
+/** A chunk of a streamed query result — mirrors Rust `StreamChunk` (#[serde(tag = "kind")]). */
+export type StreamChunk =
+  | { kind: "columns"; columns: ColumnMeta[] }
+  | { kind: "rows"; rows: CellValue[][] }
+  | { kind: "done"; rowsAffected: number | null; elapsedMs: number; truncated: boolean };
+
 export type TableKind = "table" | "view";
 export type RoutineKind = "function" | "procedure";
 

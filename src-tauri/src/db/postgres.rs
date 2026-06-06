@@ -9,12 +9,14 @@ use std::time::Instant;
 use base64::Engine as _;
 use bytes::BytesMut;
 use deadpool_postgres::{Config, ManagerConfig, RecyclingMethod, Runtime};
+use futures_util::TryStreamExt;
 use tokio_postgres::types::{to_sql_checked, IsNull, ToSql, Type};
 use tokio_postgres::Row;
 
 use crate::db::client::{
-    bytes_cell, parse_routine_kind, parse_table_kind, CellValue, ColumnInfo, ColumnMeta,
-    ConnectionConfig, DbClient, QueryResult, RoutineInfo, Schema, SchemaBuilder, SslMode,
+    bytes_cell, parse_routine_kind, parse_table_kind, CellValue, ChunkSender, ColumnInfo,
+    ColumnMeta, ConnectionConfig, DbClient, QueryResult, RoutineInfo, Schema, SchemaBuilder,
+    SslMode, StreamChunk, STREAM_BATCH, STREAM_MAX_ROWS,
 };
 use crate::error::AppError;
 
@@ -118,6 +120,89 @@ impl DbClient for PostgresClient {
             rows_affected: None,
             elapsed_ms: started.elapsed().as_millis() as u64,
         })
+    }
+
+    async fn stream_query(
+        &self,
+        sql: String,
+        params: Vec<CellValue>,
+        tx: ChunkSender,
+    ) -> Result<(), AppError> {
+        let started = Instant::now();
+        let conn = self.pool.get().await?;
+        let stmt = conn.prepare_cached(&sql).await?;
+        let param_refs: Vec<&(dyn ToSql + Sync)> =
+            params.iter().map(|p| p as &(dyn ToSql + Sync)).collect();
+
+        if stmt.columns().is_empty() {
+            let affected = conn.execute(&stmt, &param_refs).await?;
+            let _ = tx
+                .send(StreamChunk::Done {
+                    rows_affected: Some(affected),
+                    elapsed_ms: started.elapsed().as_millis() as u64,
+                    truncated: false,
+                })
+                .await;
+            return Ok(());
+        }
+
+        // Capture column metadata up front (owned), so the row loop borrows nothing else.
+        let columns: Vec<ColumnMeta> = stmt
+            .columns()
+            .iter()
+            .map(|c| ColumnMeta {
+                name: c.name().to_string(),
+                data_type: c.type_().name().to_string(),
+                nullable: true,
+            })
+            .collect();
+        let col_types: Vec<Type> = stmt.columns().iter().map(|c| c.type_().clone()).collect();
+        if tx.send(StreamChunk::Columns { columns }).await.is_err() {
+            return Ok(()); // receiver dropped
+        }
+
+        // True server-side streaming — rows arrive without buffering the whole set.
+        let row_stream = conn
+            .query_raw(&stmt, params.iter().map(|p| p as &dyn ToSql))
+            .await?;
+        futures_util::pin_mut!(row_stream);
+
+        let mut batch: Vec<Vec<CellValue>> = Vec::with_capacity(STREAM_BATCH);
+        let mut total = 0usize;
+        let mut truncated = false;
+        while let Some(row) = row_stream.try_next().await? {
+            let mut cells = Vec::with_capacity(col_types.len());
+            for (i, ty) in col_types.iter().enumerate() {
+                cells.push(pg_cell(&row, i, ty)?);
+            }
+            batch.push(cells);
+            total += 1;
+            if batch.len() >= STREAM_BATCH
+                && tx
+                    .send(StreamChunk::Rows {
+                        rows: std::mem::take(&mut batch),
+                    })
+                    .await
+                    .is_err()
+            {
+                return Ok(());
+            }
+            if total >= STREAM_MAX_ROWS {
+                truncated = true;
+                break;
+            }
+        }
+        if !batch.is_empty() {
+            let _ = tx.send(StreamChunk::Rows { rows: batch }).await;
+        }
+        let _ = tx
+            .send(StreamChunk::Done {
+                rows_affected: None,
+                elapsed_ms: started.elapsed().as_millis() as u64,
+                truncated,
+            })
+            .await;
+        Ok(())
     }
 
     async fn get_schema(&self) -> Result<Schema, AppError> {
