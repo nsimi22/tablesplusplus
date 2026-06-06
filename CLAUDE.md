@@ -343,8 +343,8 @@ npm run typecheck
   breaks the offline desktop app and our strict CSP → bundle it locally: depend on
   `monaco-editor`, configure `self.MonacoEnvironment` + the editor `?worker`, and call
   `loader.config({ monaco })` (see `src/lib/monaco.ts`, imported first in `main.tsx`).
-  Trade-off: the main JS chunk is ~3.6 MB (~950 KB gzip). Trimming Monaco to the editor
-  core + SQL only is an open optimization.
+  Trimmed to `editor.api` + the SQL basic-language only (not the full `monaco-editor` barrel),
+  which drops every other language service/grammar — main JS chunk ~2.6 MB (~720 KB gzip).
 - [2026-06-05] All — ESLint 8.57 in this env errors on `eslint . --ext` ("No files
   matching pattern") → the `lint` script uses an explicit glob `"src/**/*.{ts,tsx}"`.
 - [2026-06-05] All — TLS uses **native-tls** for both drivers (SChannel/Secure Transport/
