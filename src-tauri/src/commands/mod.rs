@@ -1,10 +1,12 @@
 //! `#[tauri::command]` handlers — thin: validate input, delegate to `db/`/`secrets/`/`config/`,
 //! map errors (CLAUDE.md §5.1). No business logic or SQL lives here.
 
+mod ai;
 mod connections;
 mod query;
 mod session;
 
+pub use ai::*;
 pub use connections::*;
 pub use query::*;
 pub use session::*;

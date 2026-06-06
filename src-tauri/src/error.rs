@@ -167,6 +167,13 @@ impl From<native_tls::Error> for AppError {
     }
 }
 
+impl From<reqwest::Error> for AppError {
+    fn from(e: reqwest::Error) -> Self {
+        AppError::new(ErrorKind::Connection, "Could not reach the AI provider")
+            .with_detail(e.to_string())
+    }
+}
+
 impl From<serde_json::Error> for AppError {
     fn from(e: serde_json::Error) -> Self {
         AppError::serialization("Failed to (de)serialize data").with_detail(e.to_string())

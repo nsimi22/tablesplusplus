@@ -16,6 +16,9 @@ targeting **PostgreSQL** and **MySQL** on macOS and Windows (Linux is a best-eff
   runs parameterized `UPDATE`s.
 - **SQL console** — Monaco editor with SQL highlighting and schema-aware autocomplete,
   plus a virtualized results / error view.
+- **AI assistant (optional, bring-your-own-key)** — drop in an **Anthropic**, **OpenAI**, or
+  **OpenRouter** key (stored in the OS keyring) to generate SQL from natural language,
+  **explain** a query, or **fix** a failed one — all schema-aware, right in the console.
 
 ## Architecture
 

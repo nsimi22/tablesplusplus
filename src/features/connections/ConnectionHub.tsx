@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
-import { Database, Plus, Trash2, Zap } from "lucide-react";
+import { Database, Plus, Sparkles, Trash2, Zap } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { Badge } from "@/components/ui/Badge";
 import { cn } from "@/lib/utils";
 import { errorMessage, type ConnectionConfig } from "@/lib/types";
 import { useWorkspaceStore } from "@/store/useWorkspaceStore";
+import { AiSettingsDialog } from "@/features/ai/AiSettingsDialog";
 import { ConnectionForm } from "./ConnectionForm";
 import { CONNECTION_COLOR_CLASS } from "./connectionDefaults";
 import {
@@ -18,6 +19,7 @@ export function ConnectionHub() {
   const { data: connections, isLoading } = useConnections();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [creating, setCreating] = useState(true);
+  const [showAiSettings, setShowAiSettings] = useState(false);
 
   const editing = useMemo(
     () => connections?.find((c) => c.id === selectedId) ?? null,
@@ -42,9 +44,20 @@ export function ConnectionHub() {
             <Database className="h-4 w-4 text-primary" />
             Tables++
           </div>
-          <Button size="icon" variant="ghost" onClick={startNew} aria-label="New connection">
-            <Plus className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-0.5">
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => setShowAiSettings(true)}
+              aria-label="AI settings"
+              title="AI settings"
+            >
+              <Sparkles className="h-4 w-4" />
+            </Button>
+            <Button size="icon" variant="ghost" onClick={startNew} aria-label="New connection">
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
         </header>
         <div className="px-4 pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
           Connections
@@ -83,6 +96,8 @@ export function ConnectionHub() {
           />
         </div>
       </main>
+
+      <AiSettingsDialog open={showAiSettings} onClose={() => setShowAiSettings(false)} />
     </div>
   );
 }

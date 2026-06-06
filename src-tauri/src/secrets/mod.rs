@@ -11,6 +11,25 @@ fn password_account(id: &str) -> String {
     format!("connection:{id}:password")
 }
 
+fn ai_key_account(provider: &str) -> String {
+    format!("ai:{provider}:apiKey")
+}
+
+pub fn set_ai_key(provider: &str, key: &str) -> Result<(), AppError> {
+    let entry = keyring::Entry::new(SERVICE, &ai_key_account(provider))?;
+    entry.set_password(key)?;
+    Ok(())
+}
+
+pub fn get_ai_key(provider: &str) -> Result<Option<String>, AppError> {
+    let entry = keyring::Entry::new(SERVICE, &ai_key_account(provider))?;
+    match entry.get_password() {
+        Ok(k) => Ok(Some(k)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
 pub fn set_password(id: &str, secret: &str) -> Result<(), AppError> {
     let entry = keyring::Entry::new(SERVICE, &password_account(id))?;
     entry.set_password(secret)?;
