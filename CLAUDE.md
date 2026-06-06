@@ -395,6 +395,12 @@ npm run typecheck
   is unsupported (errors clearly), and over a tunnel the DB sees a `127.0.0.1` peer, so TLS
   `verifyCa`/`verifyFull` will fail hostname checks — pair a tunnel with a non-verifying SSL mode.
   Compile- and clippy-verified; not runtime-tested (no live bastion in CI/sandbox).
+- [2026-06-06] Saved Queries — The SQL console's "Saved Queries" menu is a **read-only** view
+  over query-mcp's snippet store (`~/.query-mcp/store.db`, SQLite table `snippets`), read via
+  `rusqlite` (bundled) in `src-tauri/src/saved_queries.rs` on `spawn_blocking`. Selecting one
+  inserts its SQL at the cursor. Missing file/table → empty list, never an error. Tables++ never
+  writes to that store — query-mcp owns it; if its schema changes, update both sides (the same
+  cross-repo coupling as the §4.1 connections.json note, in the other direction).
 - [2026-06-07] Cell viewer — A read-only **full-cell detail dialog** (`src/features/cell/
   CellDetailDialog.tsx`) shows a cell's complete value: pretty-printed JSON, full text, or binary
   as **Base64 ⇄ Hex** (with byte count + truncation note), plus a Copy button (clipboard plugin).

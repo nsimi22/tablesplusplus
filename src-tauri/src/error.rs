@@ -118,6 +118,12 @@ impl From<keyring::Error> for AppError {
     }
 }
 
+impl From<rusqlite::Error> for AppError {
+    fn from(e: rusqlite::Error) -> Self {
+        AppError::internal("Failed to read the Saved Queries store").with_detail(e.to_string())
+    }
+}
+
 impl From<tokio_postgres::Error> for AppError {
     fn from(e: tokio_postgres::Error) -> Self {
         // SQLSTATE, when present, is a safe, useful detail.
