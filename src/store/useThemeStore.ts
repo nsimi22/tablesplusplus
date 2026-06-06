@@ -15,7 +15,10 @@ function readInitial(): Theme {
 }
 
 function applyTheme(theme: Theme) {
-  document.documentElement.classList.toggle("dark", theme === "dark");
+  // Guard for non-browser environments (e.g. unit tests importing this module under Node).
+  if (typeof document !== "undefined") {
+    document.documentElement.classList.toggle("dark", theme === "dark");
+  }
 }
 
 // Apply at import time (before React renders) so there's no light/dark flash.

@@ -25,9 +25,14 @@ let activeSchema: Schema | undefined;
 const DARK_THEME = "tablesplusplus-dark";
 const LIGHT_THEME = "tablesplusplus-light";
 
+let themesDefined = false;
+
 function ensureThemes(monaco: MonacoApi) {
-  // Monaco themes require hex (editor-internal; not Tailwind tokens). These approximate the
-  // app's dark/light palettes.
+  // Monaco is a global singleton; define each theme only once (defineTheme on every toggle is
+  // redundant). Themes require hex (editor-internal; not Tailwind tokens); these approximate
+  // the app's dark/light palettes.
+  if (themesDefined) return;
+  themesDefined = true;
   monaco.editor.defineTheme(DARK_THEME, {
     base: "vs-dark",
     inherit: true,
