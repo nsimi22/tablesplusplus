@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "@/App";
+import "@/store/useThemeStore"; // apply the saved/dark-default theme before first paint
 import "@/lib/monaco"; // self-host Monaco (no CDN) before any editor mounts
 import "@/styles/globals.css";
 

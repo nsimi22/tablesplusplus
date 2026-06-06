@@ -3,6 +3,7 @@ import { Database, Plus, Sparkles, Trash2, Zap } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { Badge } from "@/components/ui/Badge";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { cn } from "@/lib/utils";
 import { errorMessage, type ConnectionConfig } from "@/lib/types";
 import { useWorkspaceStore } from "@/store/useWorkspaceStore";
@@ -45,6 +46,7 @@ export function ConnectionHub() {
             Tables++
           </div>
           <div className="flex items-center gap-0.5">
+            <ThemeToggle />
             <Button
               size="icon"
               variant="ghost"

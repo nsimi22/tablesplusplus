@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import Editor, { type OnMount } from "@monaco-editor/react";
+import Editor, { useMonaco, type OnMount } from "@monaco-editor/react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { Lightbulb, Play, Settings2, Sparkles, Wand2, Wrench, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/Input";
 import { Spinner } from "@/components/ui/Spinner";
 import { errorMessage, type ConnectionConfig, type QueryResult, type Schema } from "@/lib/types";
 import { useWorkspaceStore } from "@/store/useWorkspaceStore";
+import { useThemeStore } from "@/store/useThemeStore";
 import { useExecuteSql, useSchema } from "@/features/workspace/hooks";
 import { useAiGenerate } from "@/features/ai/useAi";
 import { AiSettingsDialog } from "@/features/ai/AiSettingsDialog";
@@ -21,11 +22,13 @@ type CodeEditor = Parameters<OnMount>[0];
 let providerRegistered = false;
 let activeSchema: Schema | undefined;
 
-const THEME = "tablesplusplus-dark";
+const DARK_THEME = "tablesplusplus-dark";
+const LIGHT_THEME = "tablesplusplus-light";
 
-function ensureTheme(monaco: MonacoApi) {
-  // Monaco themes require hex (editor-internal; not Tailwind tokens). Approximates the theme.
-  monaco.editor.defineTheme(THEME, {
+function ensureThemes(monaco: MonacoApi) {
+  // Monaco themes require hex (editor-internal; not Tailwind tokens). These approximate the
+  // app's dark/light palettes.
+  monaco.editor.defineTheme(DARK_THEME, {
     base: "vs-dark",
     inherit: true,
     rules: [],
@@ -35,6 +38,18 @@ function ensureTheme(monaco: MonacoApi) {
       "editorLineNumber.foreground": "#4a525e",
       "editor.selectionBackground": "#2a3340",
       "editor.lineHighlightBackground": "#191d24",
+    },
+  });
+  monaco.editor.defineTheme(LIGHT_THEME, {
+    base: "vs",
+    inherit: true,
+    rules: [],
+    colors: {
+      "editor.background": "#ffffff",
+      "editor.foreground": "#1f2733",
+      "editorLineNumber.foreground": "#9aa4b2",
+      "editor.selectionBackground": "#cfe3ff",
+      "editor.lineHighlightBackground": "#f2f5f9",
     },
   });
 }
@@ -90,6 +105,17 @@ export function SqlConsole({
   const setTabSql = useWorkspaceStore((s) => s.setTabSql);
   const exec = useExecuteSql(connection.id);
   const { data: schema } = useSchema(connection.id);
+
+  const appTheme = useThemeStore((s) => s.theme);
+  const monacoTheme = appTheme === "dark" ? DARK_THEME : LIGHT_THEME;
+  const monaco = useMonaco();
+  // Re-apply the editor theme when the app theme toggles (setTheme is global to Monaco).
+  useEffect(() => {
+    if (monaco) {
+      ensureThemes(monaco);
+      monaco.editor.setTheme(monacoTheme);
+    }
+  }, [monaco, monacoTheme]);
 
   const ai = useAiGenerate();
   const editorRef = useRef<CodeEditor | null>(null);
@@ -226,8 +252,8 @@ export function SqlConsole({
 
   const onMount: OnMount = (ed, monaco) => {
     editorRef.current = ed;
-    ensureTheme(monaco);
-    monaco.editor.setTheme(THEME);
+    ensureThemes(monaco);
+    monaco.editor.setTheme(monacoTheme);
     registerProvider(monaco);
     ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => runRef.current());
   };
@@ -305,7 +331,7 @@ export function SqlConsole({
           <Editor
             height="100%"
             defaultLanguage="sql"
-            theme={THEME}
+            theme={monacoTheme}
             value={sql}
             onChange={(value) => setTabSql(tabId, value ?? "")}
             onMount={onMount}
