@@ -339,6 +339,7 @@ export function SqlConsole({
             theme={monacoTheme}
             value={sql}
             onChange={(value) => setTabSql(tabId, value ?? "")}
+            beforeMount={ensureThemes}
             onMount={onMount}
             options={{
               minimap: { enabled: false },

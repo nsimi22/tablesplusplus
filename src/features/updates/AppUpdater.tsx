@@ -47,6 +47,12 @@ export function AppUpdater() {
     }
   }, [update]);
 
+  // Release the underlying Tauri resource handle when dismissed.
+  const dismiss = useCallback(() => {
+    update?.close().catch(() => undefined);
+    setUpdate(null);
+  }, [update]);
+
   if (!update) return null;
 
   return (
@@ -61,7 +67,7 @@ export function AppUpdater() {
         </div>
         {phase !== "downloading" ? (
           <button
-            onClick={() => setUpdate(null)}
+            onClick={dismiss}
             className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
             aria-label="Dismiss"
           >
@@ -73,7 +79,7 @@ export function AppUpdater() {
       {message ? <p className="selectable mt-2 text-xs text-destructive">{message}</p> : null}
 
       <div className="mt-3 flex justify-end gap-2">
-        <Button size="sm" variant="ghost" onClick={() => setUpdate(null)} disabled={phase === "downloading"}>
+        <Button size="sm" variant="ghost" onClick={dismiss} disabled={phase === "downloading"}>
           Later
         </Button>
         <Button size="sm" onClick={install} disabled={phase === "downloading"}>
