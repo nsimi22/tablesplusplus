@@ -41,8 +41,9 @@ export function deleteConnection(id: string): Promise<void> {
 
 /**
  * Validate credentials/tunnel with a trivial round-trip. When `input` is provided,
- * the not-yet-saved form values are tested (using the typed password); otherwise the
- * stored connection `id` is tested against its keyring secret.
+ * the not-yet-saved form values are tested (using the typed password); pass `id`
+ * alongside it when editing so blank secret fields fall back to the stored keyring
+ * secrets. Without `input`, the stored `id` is tested against its keyring secret.
  */
 export function testConnection(args: {
   id?: string;
