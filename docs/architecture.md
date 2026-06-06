@@ -163,13 +163,14 @@ guessing from shape:
 { "kind": "float",    "value": 3.14 }
 { "kind": "decimal",  "value": "12345.6789" }   // string — exact
 { "kind": "text",     "value": "hello" }
-{ "kind": "bytes",    "value": "aGVsbG8=", "truncated": false }  // base64
+{ "kind": "bytes",    "value": { "data": "aGVsbG8=", "truncated": false } }  // base64 + flag
 { "kind": "dateTime", "value": "2026-06-05T12:34:56Z" }
 { "kind": "json",     "value": { "any": "json" } }
 ```
 
-Rust: `#[serde(tag = "kind", content = "value", rename_all = "camelCase")]` (the `bytes`
-`truncated` flag is handled by a small custom shape — see §8). Matching TS discriminated union:
+Rust: `#[serde(tag = "kind", content = "value", rename_all = "camelCase")]`. The `bytes` variant
+wraps a `BytesCell { data, truncated }` struct so the base64 payload and the truncation flag
+(see §8) stay under `value`. Matching TS discriminated union:
 
 ```ts
 export type CellValue =
@@ -179,7 +180,7 @@ export type CellValue =
   | { kind: "float"; value: number }
   | { kind: "decimal"; value: string }
   | { kind: "text"; value: string }
-  | { kind: "bytes"; value: string; truncated: boolean }
+  | { kind: "bytes"; value: { data: string; truncated: boolean } }
   | { kind: "dateTime"; value: string }
   | { kind: "json"; value: unknown };
 ```
