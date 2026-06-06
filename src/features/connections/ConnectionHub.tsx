@@ -7,18 +7,12 @@ import { cn } from "@/lib/utils";
 import { errorMessage, type ConnectionConfig } from "@/lib/types";
 import { useWorkspaceStore } from "@/store/useWorkspaceStore";
 import { ConnectionForm } from "./ConnectionForm";
+import { CONNECTION_COLOR_CLASS } from "./connectionDefaults";
 import {
   useConnect,
   useConnections,
   useDeleteConnection,
 } from "./useConnections";
-
-const COLOR_DOT: Record<string, string> = {
-  primary: "bg-primary",
-  success: "bg-success",
-  warning: "bg-warning",
-  destructive: "bg-destructive",
-};
 
 export function ConnectionHub() {
   const { data: connections, isLoading } = useConnections();
@@ -141,7 +135,12 @@ function ConnectionListItem({
       )}
     >
       <div className="flex items-center gap-2">
-        <span className={cn("h-2 w-2 shrink-0 rounded-full", COLOR_DOT[conn.color ?? "primary"])} />
+        <span
+          className={cn(
+            "h-2 w-2 shrink-0 rounded-full",
+            CONNECTION_COLOR_CLASS[conn.color ?? "primary"],
+          )}
+        />
         <span className="flex-1 truncate text-sm">{conn.label || conn.host}</span>
         <Badge variant="default" className="shrink-0">
           {conn.engine === "postgres" ? "PG" : "MySQL"}

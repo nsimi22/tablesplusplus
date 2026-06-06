@@ -137,7 +137,27 @@ impl From<deadpool_postgres::PoolError> for AppError {
 
 impl From<mysql_async::Error> for AppError {
     fn from(e: mysql_async::Error) -> Self {
-        AppError::query("MySQL error").with_detail(e.to_string())
+        use mysql_async::Error;
+        let detail = e.to_string();
+        match e {
+            // I/O, URL, and driver-level failures are connection problems.
+            Error::Io(_) | Error::Url(_) | Error::Driver(_) => {
+                AppError::connection("Failed to connect to MySQL").with_detail(detail)
+            }
+            Error::Server(server) => match server.code {
+                // Access-denied / bad credentials → auth, so the UI can re-prompt.
+                1044 | 1045 | 1251 | 1698 => {
+                    AppError::new(ErrorKind::Auth, "MySQL authentication failed")
+                        .with_detail(detail)
+                }
+                // Unknown database / unknown host → can't reach the target.
+                1049 | 1042 => {
+                    AppError::connection("Cannot reach the MySQL database").with_detail(detail)
+                }
+                _ => AppError::query("MySQL query error").with_detail(detail),
+            },
+            _ => AppError::query("MySQL error").with_detail(detail),
+        }
     }
 }
 

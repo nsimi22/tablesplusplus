@@ -83,23 +83,26 @@ function ResultTable({ result }: { result: QueryResult }) {
               )}
               style={{ top: vRow.start, height: ROW_HEIGHT, width: totalWidth }}
             >
-              {result.rows[vRow.index].map((cell, colIndex) => (
-                <div
-                  key={colIndex}
-                  style={{ width: COL_WIDTH }}
-                  className="flex h-full shrink-0 items-center border-r border-border/60 px-2 text-sm"
-                >
-                  <span
-                    className={cn(
-                      "selectable truncate",
-                      cell.kind === "null" ? "italic text-muted-foreground/60" : "",
-                    )}
-                    title={displayCell(cell)}
+              {result.rows[vRow.index].map((cell, colIndex) => {
+                const text = displayCell(cell);
+                return (
+                  <div
+                    key={colIndex}
+                    style={{ width: COL_WIDTH }}
+                    className="flex h-full shrink-0 items-center border-r border-border/60 px-2 text-sm"
                   >
-                    {displayCell(cell)}
-                  </span>
-                </div>
-              ))}
+                    <span
+                      className={cn(
+                        "selectable truncate",
+                        cell.kind === "null" ? "italic text-muted-foreground/60" : "",
+                      )}
+                      title={text}
+                    >
+                      {text}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           ))}
         </div>

@@ -348,4 +348,17 @@ npm run typecheck
 - [2026-06-05] All — TLS uses **native-tls** for both drivers (SChannel/Secure Transport/
   OpenSSL), which fits the cross-platform desktop target. v1 simplifications: SSL `prefer`
   is treated like `disable`; `verifyCa`/`verifyFull` both do full verification (see
-  docs/architecture.md §11).
+  docs/architecture.md §11). Note: `require` accepting an unverified cert matches libpq/MySQL
+  `require` semantics (encrypt, don't authenticate) — it is intentional, not a bug.
+- [2026-06-06] MySQL — `UPDATE` `affected_rows` counts *changed* rows, not matched ones (0 when
+  the new value equals the old). The grid commit guard is therefore engine-aware: Postgres
+  treats 0 rows as "row not found" (it always counts matched rows); MySQL only flags `> 1`.
+- [2026-06-06] MySQL — datetime values are formatted with a **space** separator (`YYYY-MM-DD
+  HH:MM:SS`), not ISO `T`, so they round-trip into DATETIME/TIMESTAMP literals on commit
+  (MySQL 5.x rejects the `T` form). Postgres uses RFC-3339/ISO with `T`.
+- [2026-06-06] Postgres — `execute_query` uses `prepare_cached` (deadpool per-connection
+  statement cache) to avoid a PREPARE round-trip on repeated queries (paging, batch commits).
+- [2026-06-06] All — Editing a connection (`update_connection`) **evicts its open pool** so the
+  next `connect` rebuilds against the new host/port/credentials; an in-use connection must be
+  reopened after editing. Quick-filter `<`/`>` compare numerically on numeric columns (typed
+  bind), and as text (lexicographic, correct for ISO dates) otherwise.

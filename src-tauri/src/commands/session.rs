@@ -22,7 +22,10 @@ pub async fn connect(
         .ok_or_else(|| AppError::not_found("Connection not found"))?;
     let secret = secrets::get_password(&id)?;
     let conn = build_connection(&cfg, secret).await?;
-    registry.insert(id, conn);
+    // Insert atomically; if a concurrent connect won the race, close our redundant pool.
+    if let Some(extra) = registry.insert_if_absent(id, conn) {
+        let _ = extra.close().await;
+    }
     Ok(())
 }
 

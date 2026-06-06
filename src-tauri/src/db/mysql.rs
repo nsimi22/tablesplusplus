@@ -11,12 +11,11 @@ use mysql_async::prelude::Queryable;
 use mysql_async::{OptsBuilder, Params, Pool, Row, SslOpts, Value};
 
 use crate::db::client::{
-    BytesCell, CellValue, ColumnInfo, ColumnMeta, ConnectionConfig, DbClient, QueryResult,
-    RoutineInfo, RoutineKind, Schema, SchemaBuilder, SslMode, TableKind,
+    bytes_cell, parse_routine_kind, parse_table_kind, CellValue, ColumnInfo, ColumnMeta,
+    ConnectionConfig, DbClient, QueryResult, RoutineInfo, Schema, SchemaBuilder, SslMode,
 };
 use crate::error::AppError;
 
-const MAX_BYTES: usize = 64 * 1024;
 const CHARSET_BINARY: u16 = 63;
 
 #[derive(Clone)]
@@ -165,12 +164,7 @@ impl DbClient for MysqlClient {
 
         let mut builder = SchemaBuilder::default();
         for (schema, name, table_type) in &table_rows {
-            let kind = if table_type.eq_ignore_ascii_case("VIEW") {
-                TableKind::View
-            } else {
-                TableKind::Table
-            };
-            builder.add_table(schema.clone(), name.clone(), kind);
+            builder.add_table(schema.clone(), name.clone(), parse_table_kind(table_type));
         }
         for (schema, table, col_name, col_type, is_nullable, col_key) in &col_rows {
             builder.add_column(
@@ -189,11 +183,7 @@ impl DbClient for MysqlClient {
             .map(|(schema, name, routine_type)| RoutineInfo {
                 schema: schema.clone(),
                 name: name.clone(),
-                kind: if routine_type.eq_ignore_ascii_case("PROCEDURE") {
-                    RoutineKind::Procedure
-                } else {
-                    RoutineKind::Function
-                },
+                kind: parse_routine_kind(routine_type),
             })
             .collect();
 
@@ -208,17 +198,6 @@ struct ColSpec {
     column_type: ColumnType,
     length: u32,
     charset: u16,
-}
-
-fn bytes_cell(mut b: Vec<u8>) -> CellValue {
-    let truncated = b.len() > MAX_BYTES;
-    if truncated {
-        b.truncate(MAX_BYTES);
-    }
-    CellValue::Bytes(BytesCell {
-        data: base64::engine::general_purpose::STANDARD.encode(&b),
-        truncated,
-    })
 }
 
 fn to_my_params(params: Vec<CellValue>) -> Params {
@@ -262,7 +241,10 @@ fn my_cell(val: &Value, spec: &ColSpec) -> CellValue {
             }
         }
         Value::UInt(u) => {
-            if *u > i64::MAX as u64 {
+            // TINYINT(1) UNSIGNED is also conventionally a boolean.
+            if spec.column_type == MYSQL_TYPE_TINY && spec.length == 1 {
+                CellValue::Bool(*u != 0)
+            } else if *u > i64::MAX as u64 {
                 CellValue::Decimal(u.to_string())
             } else {
                 CellValue::Int(*u as i64)
@@ -294,14 +276,16 @@ fn my_cell(val: &Value, spec: &ColSpec) -> CellValue {
             _ => CellValue::Text(String::from_utf8_lossy(b).into_owned()),
         },
         Value::Date(y, mo, d, h, mi, s, us) => {
+            // Space separator (not ISO 'T') so the value round-trips into MySQL DATETIME/
+            // TIMESTAMP literals on commit, including on MySQL 5.x.
             if spec.column_type == MYSQL_TYPE_DATE {
                 CellValue::DateTime(format!("{y:04}-{mo:02}-{d:02}"))
             } else if *us > 0 {
                 CellValue::DateTime(format!(
-                    "{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}.{us:06}"
+                    "{y:04}-{mo:02}-{d:02} {h:02}:{mi:02}:{s:02}.{us:06}"
                 ))
             } else {
-                CellValue::DateTime(format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}"))
+                CellValue::DateTime(format!("{y:04}-{mo:02}-{d:02} {h:02}:{mi:02}:{s:02}"))
             }
         }
         Value::Time(neg, days, h, mi, s, us) => {

@@ -19,15 +19,28 @@ export function qualified(engine: Engine, schema: string, table: string): string
 
 export type FilterOp = "=" | "!=" | "<" | ">" | "contains";
 
+export const FILTER_OPS: FilterOp[] = ["=", "!=", "<", ">", "contains"];
+
 export interface QuickFilter {
   column: string;
   op: FilterOp;
   value: string;
+  /** Sampled kind of the column's cells, set when the filter is applied; drives typed vs
+   *  text comparison so numeric ranges aren't compared lexicographically. */
+  columnKind?: CellValue["kind"];
 }
 
-/** Build a paged `SELECT *` with an optional quick filter. Filter comparisons cast the
- *  column to text so a single text param works for any column type (a deliberate v1
- *  simplification for the "quick visual filter"). */
+function textCast(engine: Engine, column: string): string {
+  return engine === "postgres"
+    ? `${quoteIdent(engine, column)}::text`
+    : `CAST(${quoteIdent(engine, column)} AS CHAR)`;
+}
+
+/** Build a paged `SELECT *` with an optional quick filter.
+ *
+ *  Numeric columns use a native typed comparison (so `> 9` orders numerically); text and
+ *  date/time columns compare as text (lexicographic order is correct for ISO-8601 dates and
+ *  natural for text), and `contains` always uses a `LIKE`/`ILIKE` text match. */
 export function buildSelect(args: {
   engine: Engine;
   schema: string;
@@ -41,23 +54,40 @@ export function buildSelect(args: {
   let sql = `SELECT * FROM ${qualified(engine, schema, table)}`;
 
   if (filter && filter.value !== "") {
-    const colText =
-      engine === "postgres"
-        ? `${quoteIdent(engine, filter.column)}::text`
-        : `CAST(${quoteIdent(engine, filter.column)} AS CHAR)`;
+    // Defense in depth: the operator comes from a constrained <select>, but never interpolate
+    // an unrecognized token into SQL.
+    if (!FILTER_OPS.includes(filter.op)) {
+      throw new Error(`Unsupported filter operator: ${filter.op}`);
+    }
     const ph = placeholder(engine, 1);
+    const numeric =
+      filter.columnKind === "int" ||
+      filter.columnKind === "float" ||
+      filter.columnKind === "decimal";
+    const looksNumeric = /^-?\d+(\.\d+)?$/.test(filter.value);
+
     if (filter.op === "contains") {
-      const op = engine === "postgres" ? "ILIKE" : "LIKE";
-      sql += ` WHERE ${colText} ${op} ${ph}`;
+      const like = engine === "postgres" ? "ILIKE" : "LIKE";
+      sql += ` WHERE ${textCast(engine, filter.column)} ${like} ${ph}`;
       params.push({ kind: "text", value: `%${filter.value}%` });
+    } else if (numeric && looksNumeric) {
+      // Native numeric comparison — no text cast, so ordering is correct.
+      sql += ` WHERE ${quoteIdent(engine, filter.column)} ${filter.op} ${ph}`;
+      params.push(numericParam(filter.columnKind, filter.value));
     } else {
-      sql += ` WHERE ${colText} ${filter.op} ${ph}`;
+      sql += ` WHERE ${textCast(engine, filter.column)} ${filter.op} ${ph}`;
       params.push({ kind: "text", value: filter.value });
     }
   }
 
   sql += ` LIMIT ${limit} OFFSET ${offset}`;
   return { sql, params };
+}
+
+function numericParam(kind: CellValue["kind"] | undefined, value: string): CellValue {
+  if (kind === "int") return { kind: "int", value: Number.parseInt(value, 10) };
+  if (kind === "float") return { kind: "float", value: Number.parseFloat(value) };
+  return { kind: "decimal", value };
 }
 
 export interface ColumnValue {
@@ -97,9 +127,13 @@ export function buildUpdate(args: {
   return { sql, params };
 }
 
-/** Coerce a raw editor string into a `CellValue` matching the original cell's kind. */
+/** Coerce a raw editor string into a `CellValue` matching the original cell's kind.
+ *  An empty string is a valid empty TEXT value; for non-text kinds (which have no empty
+ *  representation) it means NULL. */
 export function coerceCellInput(original: CellValue, raw: string): CellValue {
-  if (raw === "") return { kind: "null" };
+  if (raw === "") {
+    return original.kind === "text" ? { kind: "text", value: "" } : { kind: "null" };
+  }
   switch (original.kind) {
     case "int": {
       const n = Number.parseInt(raw, 10);

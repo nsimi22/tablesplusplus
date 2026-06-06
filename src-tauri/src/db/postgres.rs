@@ -13,13 +13,10 @@ use tokio_postgres::types::{to_sql_checked, IsNull, ToSql, Type};
 use tokio_postgres::Row;
 
 use crate::db::client::{
-    BytesCell, CellValue, ColumnInfo, ColumnMeta, ConnectionConfig, DbClient, QueryResult,
-    RoutineInfo, RoutineKind, Schema, SchemaBuilder, SslMode, TableKind,
+    bytes_cell, parse_routine_kind, parse_table_kind, CellValue, ColumnInfo, ColumnMeta,
+    ConnectionConfig, DbClient, QueryResult, RoutineInfo, Schema, SchemaBuilder, SslMode,
 };
 use crate::error::AppError;
-
-/// Display/truncation threshold for binary cells (docs/architecture.md §8).
-const MAX_BYTES: usize = 64 * 1024;
 
 #[derive(Clone)]
 pub struct PostgresClient {
@@ -77,7 +74,9 @@ impl DbClient for PostgresClient {
     ) -> Result<QueryResult, AppError> {
         let started = Instant::now();
         let conn = self.pool.get().await?;
-        let stmt = conn.prepare(&sql).await?;
+        // Cached per pooled connection — avoids a PREPARE round-trip on repeated queries
+        // (e.g. paginated SELECTs re-run on scroll/filter, batched grid commits).
+        let stmt = conn.prepare_cached(&sql).await?;
 
         let param_refs: Vec<&(dyn ToSql + Sync)> =
             params.iter().map(|p| p as &(dyn ToSql + Sync)).collect();
@@ -173,12 +172,7 @@ impl DbClient for PostgresClient {
             let schema: String = r.try_get(0)?;
             let name: String = r.try_get(1)?;
             let table_type: String = r.try_get(2)?;
-            let kind = if table_type.eq_ignore_ascii_case("VIEW") {
-                TableKind::View
-            } else {
-                TableKind::Table
-            };
-            builder.add_table(schema, name, kind);
+            builder.add_table(schema, name, parse_table_kind(&table_type));
         }
         for r in &col_rows {
             let schema: String = r.try_get(0)?;
@@ -197,11 +191,7 @@ impl DbClient for PostgresClient {
             routines.push(RoutineInfo {
                 schema: r.try_get(0)?,
                 name: r.try_get(1)?,
-                kind: if routine_type.eq_ignore_ascii_case("PROCEDURE") {
-                    RoutineKind::Procedure
-                } else {
-                    RoutineKind::Function
-                },
+                kind: parse_routine_kind(&routine_type),
             });
         }
 
@@ -232,17 +222,6 @@ fn tls_connector(mode: SslMode) -> Result<Option<native_tls::TlsConnector>, AppE
             Ok(Some(native_tls::TlsConnector::builder().build()?))
         }
     }
-}
-
-fn bytes_cell(mut b: Vec<u8>) -> CellValue {
-    let truncated = b.len() > MAX_BYTES;
-    if truncated {
-        b.truncate(MAX_BYTES);
-    }
-    CellValue::Bytes(BytesCell {
-        data: base64::engine::general_purpose::STANDARD.encode(&b),
-        truncated,
-    })
 }
 
 /// Lower a single Postgres column value into a generic `CellValue` (docs/architecture.md §5.1).
@@ -320,10 +299,18 @@ impl ToSql for CellValue {
             CellValue::Null => Ok(IsNull::Yes),
             CellValue::Bool(b) => b.to_sql(ty, out),
             CellValue::Int(i) => match *ty {
-                Type::INT2 => (*i as i16).to_sql(ty, out),
-                Type::INT4 => (*i as i32).to_sql(ty, out),
+                // Checked conversions: a value that overflows the column's width is a clear
+                // error rather than a silently wrapped, corrupt write.
+                Type::INT2 => i16::try_from(*i)
+                    .map_err(|e| Box::new(e) as BoxError)?
+                    .to_sql(ty, out),
+                Type::INT4 => i32::try_from(*i)
+                    .map_err(|e| Box::new(e) as BoxError)?
+                    .to_sql(ty, out),
                 // OID is an unsigned 32-bit int; i64 has no ToSql for it.
-                Type::OID => (*i as u32).to_sql(ty, out),
+                Type::OID => u32::try_from(*i)
+                    .map_err(|e| Box::new(e) as BoxError)?
+                    .to_sql(ty, out),
                 _ => i.to_sql(ty, out),
             },
             CellValue::Float(f) => match *ty {

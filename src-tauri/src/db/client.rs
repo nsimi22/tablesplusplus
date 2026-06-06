@@ -5,6 +5,7 @@
 //! `match` is simpler and allocation-free. The `DbClient` trait remains the shared contract
 //! that each concrete client implements and is tested against.
 
+use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 
 use crate::db::mysql::MysqlClient;
@@ -202,6 +203,39 @@ pub struct Schema {
     pub tables: Vec<TableInfo>,
     pub views: Vec<TableInfo>,
     pub routines: Vec<RoutineInfo>,
+}
+
+/// Display/truncation threshold for binary cells (docs/architecture.md §8). Shared by both engines.
+pub(crate) const MAX_BYTES: usize = 64 * 1024;
+
+/// Lower raw bytes into a (possibly truncated) base64-encoded `CellValue::Bytes`.
+pub(crate) fn bytes_cell(mut b: Vec<u8>) -> CellValue {
+    let truncated = b.len() > MAX_BYTES;
+    if truncated {
+        b.truncate(MAX_BYTES);
+    }
+    CellValue::Bytes(BytesCell {
+        data: base64::engine::general_purpose::STANDARD.encode(&b),
+        truncated,
+    })
+}
+
+/// Map an `information_schema` table_type string to a `TableKind`.
+pub(crate) fn parse_table_kind(table_type: &str) -> TableKind {
+    if table_type.eq_ignore_ascii_case("VIEW") {
+        TableKind::View
+    } else {
+        TableKind::Table
+    }
+}
+
+/// Map an `information_schema` routine_type string to a `RoutineKind`.
+pub(crate) fn parse_routine_kind(routine_type: &str) -> RoutineKind {
+    if routine_type.eq_ignore_ascii_case("PROCEDURE") {
+        RoutineKind::Procedure
+    } else {
+        RoutineKind::Function
+    }
 }
 
 /// Accumulates tables/views and their columns in stable (insertion) order while a driver

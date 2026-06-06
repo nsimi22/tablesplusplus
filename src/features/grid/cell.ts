@@ -34,12 +34,3 @@ export function editableText(cell: CellValue): string {
   if (cell.kind === "null") return "";
   return displayCell(cell);
 }
-
-export function cellsEqual(a: CellValue, b: CellValue): boolean {
-  if (a.kind !== b.kind) return false;
-  if (a.kind === "null") return true;
-  if (a.kind === "json") return JSON.stringify(a.value) === JSON.stringify(b);
-  if (a.kind === "bytes" && b.kind === "bytes") return a.value.data === b.value.data;
-  // Scalars.
-  return "value" in a && "value" in b && a.value === (b as { value: unknown }).value;
-}

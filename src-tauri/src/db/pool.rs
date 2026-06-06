@@ -22,8 +22,18 @@ impl PoolRegistry {
         }
     }
 
-    pub fn insert(&self, id: String, conn: DbConnection) {
-        self.conns.insert(id, conn);
+    /// Atomically insert only if absent. Returns `Some(conn)` (the rejected connection) when an
+    /// entry already existed, so the caller can close the now-redundant pool — this closes the
+    /// check-then-insert race between two concurrent `connect` calls for the same id.
+    pub fn insert_if_absent(&self, id: String, conn: DbConnection) -> Option<DbConnection> {
+        use dashmap::mapref::entry::Entry;
+        match self.conns.entry(id) {
+            Entry::Occupied(_) => Some(conn),
+            Entry::Vacant(slot) => {
+                slot.insert(conn);
+                None
+            }
+        }
     }
 
     pub fn get(&self, id: &str) -> Result<DbConnection, AppError> {

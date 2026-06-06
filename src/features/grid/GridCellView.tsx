@@ -16,6 +16,7 @@ export function GridCellView({ width, value, edited, onCommit }: GridCellViewPro
   const [editing, setEditing] = useState(false);
   const display = edited ?? value;
   const isNull = display.kind === "null";
+  const text = displayCell(display);
 
   const startEdit = () => {
     if (isEditable(value)) setEditing(true);
@@ -47,9 +48,9 @@ export function GridCellView({ width, value, edited, onCommit }: GridCellViewPro
               ? "tabular-nums"
               : "",
           )}
-          title={displayCell(display)}
+          title={text}
         >
-          {displayCell(display)}
+          {text}
         </span>
       )}
     </div>

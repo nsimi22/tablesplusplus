@@ -26,6 +26,15 @@ export const CONNECTION_COLORS = [
   "destructive",
 ] as const;
 
+/** Maps a connection color name to its Tailwind background class (static so the content
+ *  scanner keeps these utilities). Single source of truth for swatches and list dots. */
+export const CONNECTION_COLOR_CLASS: Record<string, string> = {
+  primary: "bg-primary",
+  success: "bg-success",
+  warning: "bg-warning",
+  destructive: "bg-destructive",
+};
+
 export function emptyConnectionInput(): ConnectionInput {
   return {
     engine: "postgres",

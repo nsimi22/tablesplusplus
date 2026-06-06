@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { errorMessage, type ConnectionConfig, type ConnectionInput, type Engine } from "@/lib/types";
 import {
   CONNECTION_COLORS,
+  CONNECTION_COLOR_CLASS,
   DEFAULT_PORTS,
   ENGINES,
   SSL_MODES,
@@ -39,14 +40,6 @@ function toInput(config: ConnectionConfig): ConnectionInput {
     password: "", // never echoed back; blank means "leave unchanged"
   };
 }
-
-// Static class map so Tailwind's content scanner keeps these utilities.
-const COLOR_BG: Record<string, string> = {
-  primary: "bg-primary",
-  success: "bg-success",
-  warning: "bg-warning",
-  destructive: "bg-destructive",
-};
 
 type TestStatus =
   | { state: "idle" }
@@ -192,7 +185,7 @@ export function ConnectionForm({ editing, onSaved }: ConnectionFormProps) {
                   onClick={() => patch({ color: c })}
                   className={cn(
                     "h-6 w-6 rounded-full border-2 transition",
-                    COLOR_BG[c],
+                    CONNECTION_COLOR_CLASS[c],
                     input.color === c ? "border-foreground" : "border-transparent",
                   )}
                 />

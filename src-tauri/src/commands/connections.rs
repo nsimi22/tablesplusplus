@@ -22,15 +22,22 @@ pub async fn save_connection(
     input: ConnectionInput,
 ) -> Result<ConnectionConfig, AppError> {
     let id = uuid::Uuid::new_v4().to_string();
-    write_secret_if_present(&id, input.password.as_deref())?;
-    let cfg = input.into_config(id);
-    store.upsert(cfg.clone())?;
+    let wrote_secret = write_secret_if_present(&id, input.password.as_deref())?;
+    let cfg = input.into_config(id.clone());
+    if let Err(e) = store.upsert(cfg.clone()) {
+        // Don't leave an orphaned keyring entry for a connection that was never persisted.
+        if wrote_secret {
+            let _ = secrets::delete_password(&id);
+        }
+        return Err(e);
+    }
     Ok(cfg)
 }
 
 #[tauri::command]
 pub async fn update_connection(
     store: State<'_, ConfigStore>,
+    registry: State<'_, PoolRegistry>,
     id: String,
     input: ConnectionInput,
 ) -> Result<ConnectionConfig, AppError> {
@@ -39,8 +46,13 @@ pub async fn update_connection(
     }
     // A null/empty password leaves the stored secret untouched.
     write_secret_if_present(&id, input.password.as_deref())?;
-    let cfg = input.into_config(id);
+    let cfg = input.into_config(id.clone());
     store.upsert(cfg.clone())?;
+    // The persisted config changed; evict any open pool so the next connect rebuilds it against
+    // the new host/port/credentials rather than silently querying the old target.
+    if let Some(conn) = registry.remove(&id) {
+        let _ = conn.close().await;
+    }
     Ok(cfg)
 }
 
@@ -92,11 +104,13 @@ pub async fn test_connection(
     result
 }
 
-fn write_secret_if_present(id: &str, password: Option<&str>) -> Result<(), AppError> {
+/// Returns `true` if a secret was actually written to the keyring.
+fn write_secret_if_present(id: &str, password: Option<&str>) -> Result<bool, AppError> {
     if let Some(pw) = password {
         if !pw.is_empty() {
             secrets::set_password(id, pw)?;
+            return Ok(true);
         }
     }
-    Ok(())
+    Ok(false)
 }

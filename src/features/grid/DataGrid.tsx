@@ -11,6 +11,7 @@ import { useSchema, useTableData } from "@/features/workspace/hooks";
 import {
   buildUpdate,
   coerceCellInput,
+  FILTER_OPS,
   type ColumnValue,
   type FilterOp,
   type QuickFilter,
@@ -22,8 +23,6 @@ import { GridCellView } from "./GridCellView";
 const PAGE_SIZE = 500;
 const ROW_HEIGHT = 28;
 const COL_WIDTH = 184;
-
-const FILTER_OPS: FilterOp[] = ["=", "!=", "<", ">", "contains"];
 
 /** rowIndex → (colIndex → new value). */
 type Edits = Record<number, Record<number, CellValue>>;
@@ -118,7 +117,23 @@ export function DataGrid({
           set,
           where,
         });
-        await exec.mutateAsync({ sql, params });
+        const res = await exec.mutateAsync({ sql, params });
+        // Guard against silent data loss / over-broad writes. A PK update must touch one row.
+        // Postgres counts matched rows, so 0 reliably means "not found". MySQL reports 0 when
+        // the new value equals the old (matched but unchanged), so there we only flag > 1.
+        const affected = res.rowsAffected;
+        if (affected !== null) {
+          if (affected > 1) {
+            throw new Error(
+              `This update matched ${affected} rows but expected exactly one; aborting to avoid unintended writes.`,
+            );
+          }
+          if (affected === 0 && connection.engine === "postgres") {
+            throw new Error(
+              "No matching row was found — it may have been changed or deleted. Refresh and retry.",
+            );
+          }
+        }
         delete remaining[rowIndex];
       }
       setEdits({});
@@ -135,7 +150,19 @@ export function DataGrid({
         columns={columns.map((c) => c.name)}
         draft={draftFilter}
         onDraftChange={setDraftFilter}
-        onApply={() => setFilter(draftFilter.value === "" ? null : draftFilter)}
+        onApply={() => {
+          if (draftFilter.value === "") {
+            setFilter(null);
+            return;
+          }
+          // Sample the column's kind from a non-null cell so numeric ranges compare numerically.
+          const colIndex = columns.findIndex((c) => c.name === draftFilter.column);
+          const sample =
+            colIndex >= 0
+              ? rows.find((r) => r[colIndex] && r[colIndex].kind !== "null")?.[colIndex]
+              : undefined;
+          setFilter({ ...draftFilter, columnKind: sample?.kind });
+        }}
         onClear={() => {
           setFilter(null);
           setDraftFilter((f) => ({ ...f, value: "" }));

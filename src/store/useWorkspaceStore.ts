@@ -86,12 +86,19 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       tabs: state.tabs.map((t) => (t.id === tabId ? { ...t, sql } : t)),
     })),
 
-  setActiveTab: (tabId) => set({ activeTabId: tabId }),
+  setActiveTab: (tabId) =>
+    set((state) => ({
+      activeTabId: tabId,
+      // Focusing the pinned tab collapses the split rather than leaving a stale right pane.
+      secondaryTabId: state.secondaryTabId === tabId ? null : state.secondaryTabId,
+    })),
 
   toggleSecondaryTab: (tabId) =>
-    set((state) => ({
-      secondaryTabId: state.secondaryTabId === tabId ? null : tabId,
-    })),
+    set((state) => {
+      // A tab can't be split against itself; ignore the request on the active tab.
+      if (tabId === state.activeTabId) return {};
+      return { secondaryTabId: state.secondaryTabId === tabId ? null : tabId };
+    }),
 
   closeTab: (tabId) =>
     set((state) => {
