@@ -88,8 +88,9 @@ pub async fn delete_connection(
 }
 
 /// Validate credentials with a trivial round-trip. With `input`, the not-yet-saved form
-/// values (and typed password) are tested; otherwise the stored `id` is tested against its
-/// keyring secret.
+/// values (and typed password) are tested; secrets left blank while editing (`id` present)
+/// fall back to the stored keyring secrets. Without `input`, the stored `id` is tested
+/// against its keyring secret.
 #[tauri::command]
 pub async fn test_connection(
     store: State<'_, ConfigStore>,
@@ -97,9 +98,19 @@ pub async fn test_connection(
     input: Option<ConnectionInput>,
 ) -> Result<(), AppError> {
     let (cfg, secret, ssh_secret) = match (id, input) {
-        (_, Some(inp)) => {
-            let secret = inp.password.clone().filter(|p| !p.is_empty());
-            let ssh_secret = inp.ssh_secret.clone().filter(|p| !p.is_empty());
+        (id, Some(inp)) => {
+            let mut secret = inp.password.clone().filter(|p| !p.is_empty());
+            let mut ssh_secret = inp.ssh_secret.clone().filter(|p| !p.is_empty());
+            // Editing with untouched secret fields ("leave unchanged"): test against the
+            // stored keyring secrets instead of an empty password.
+            if let Some(id) = &id {
+                if secret.is_none() {
+                    secret = secrets::get_password(id)?;
+                }
+                if ssh_secret.is_none() && inp.ssh.is_some() {
+                    ssh_secret = secrets::get_ssh_secret(id)?;
+                }
+            }
             (inp.into_config("__test__".to_string()), secret, ssh_secret)
         }
         (Some(id), None) => {

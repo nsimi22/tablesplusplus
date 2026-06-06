@@ -86,8 +86,9 @@ export function ConnectionForm({ editing, onSaved }: ConnectionFormProps) {
   const onTest = async () => {
     setTest({ state: "testing" });
     try {
-      // Test the live form values (including the typed password), not the stored secret.
-      await testConn.mutateAsync({ input });
+      // Test the live form values. When editing, pass the id so blank ("unchanged")
+      // secret fields fall back to the stored keyring secrets.
+      await testConn.mutateAsync(editing ? { id: editing.id, input } : { input });
       setTest({ state: "ok" });
     } catch (err) {
       setTest({ state: "error", message: errorMessage(err) });
