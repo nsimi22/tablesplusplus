@@ -131,6 +131,10 @@ tablesplusplus/
   in app config, or in logs.
 - Non-secret connection metadata (host, port, user, db name, SSL mode, color/label, last-used)
   is stored in a local config file (JSON) under the app data dir.
+  - **External consumer:** `completesolar/query-mcp` reads `connections.json` and the keyring
+    entries (`attach_tablesplusplus_connection`) to attach saved connections in Claude sessions.
+    If `ConnectionConfig` field names, the file location, or the keyring service/account naming
+    change, update that bridge (`src/tools/tablesplusplus.ts`) in the same breath.
 - Each connection has a stable UUID `id`. The secret is stored in the OS keyring under
   service `tablesplusplus` and account `connection:{id}:password` (and similar keys for
   SSH secrets). Config references the connection by `id` only.
