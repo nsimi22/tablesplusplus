@@ -47,6 +47,7 @@ pub fn run() {
             commands::disconnect,
             commands::get_schema,
             commands::execute_query,
+            commands::execute_query_stream,
             commands::get_ai_settings,
             commands::save_ai_settings,
             commands::ai_generate,

@@ -375,6 +375,12 @@ npm run typecheck
   download/verify runs in the Rust plugin (not the webview), so the strict CSP is unchanged. The
   updater public key in config is a **placeholder** until a real key is set; see
   `docs/releasing.md`. Theme: `:root` = light, `.dark` = dark; `useThemeStore` defaults to dark.
+- [2026-06-06] Streaming — The SQL console runs via `execute_query_stream`, which streams results
+  to the webview over a Tauri `Channel<StreamChunk>` (columns → row batches of `STREAM_BATCH` →
+  `done`), capped at `STREAM_MAX_ROWS` (truncated flag). Postgres uses `query_raw`; MySQL iterates
+  `QueryResult::next()` — both stream row-by-row without buffering the whole set. The streaming
+  command holds an abort-on-drop guard so the DB query stops if the command is cancelled (tab
+  closed). The grid still uses paged `execute_query`; app-generated DML/commits stay on it.
 - [2026-06-06] AI — Optional, bring-your-own-key SQL assistant (Text-to-SQL / Explain / Fix).
   Provider calls run in the **Rust backend** via `reqwest` (not the webview), so the strict CSP
   needs no `connect-src` exception; the API key lives in the OS keyring (`ai:{provider}:apiKey`),

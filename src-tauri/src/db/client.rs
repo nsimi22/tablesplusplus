@@ -279,6 +279,34 @@ impl SchemaBuilder {
     }
 }
 
+// ---- Streaming ----
+
+/// A chunk of a streamed query result, forwarded to the frontend over a Tauri channel so a
+/// large result renders progressively with bounded per-message size (docs/architecture.md §8).
+#[derive(Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum StreamChunk {
+    Columns {
+        columns: Vec<ColumnMeta>,
+    },
+    Rows {
+        rows: Vec<Vec<CellValue>>,
+    },
+    Done {
+        rows_affected: Option<u64>,
+        elapsed_ms: u64,
+        /// True if streaming stopped at `STREAM_MAX_ROWS` before exhausting the result.
+        truncated: bool,
+    },
+}
+
+/// Bounded channel the engine clients push `StreamChunk`s into; the command forwards them.
+pub type ChunkSender = tokio::sync::mpsc::Sender<StreamChunk>;
+
+/// Rows per streamed batch, and a safety cap on total streamed rows.
+pub const STREAM_BATCH: usize = 1000;
+pub const STREAM_MAX_ROWS: usize = 1_000_000;
+
 // ---- The unified contract ----
 
 #[async_trait::async_trait]
@@ -295,6 +323,14 @@ pub trait DbClient: Send + Sync {
         sql: String,
         params: Vec<CellValue>,
     ) -> Result<QueryResult, AppError>;
+    /// Stream a row-returning query in batches into `tx` (columns first, then row batches, then
+    /// a final `Done`). Non-row statements send a single `Done` with `rows_affected`.
+    async fn stream_query(
+        &self,
+        sql: String,
+        params: Vec<CellValue>,
+        tx: ChunkSender,
+    ) -> Result<(), AppError>;
     /// Introspect tables/views/routines for the connected database.
     async fn get_schema(&self) -> Result<Schema, AppError>;
 }
@@ -331,6 +367,18 @@ impl DbConnection {
         match self {
             DbConnection::Postgres(c) => c.execute_query(sql, params).await,
             DbConnection::Mysql(c) => c.execute_query(sql, params).await,
+        }
+    }
+
+    pub async fn stream_query(
+        &self,
+        sql: String,
+        params: Vec<CellValue>,
+        tx: ChunkSender,
+    ) -> Result<(), AppError> {
+        match self {
+            DbConnection::Postgres(c) => c.stream_query(sql, params, tx).await,
+            DbConnection::Mysql(c) => c.stream_query(sql, params, tx).await,
         }
     }
 

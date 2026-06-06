@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { AlertCircle, CheckCircle2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { QueryResult } from "@/lib/types";
 import { displayCell } from "@/features/grid/cell";
@@ -11,15 +11,28 @@ const COL_WIDTH = 176;
 interface ResultViewProps {
   result: QueryResult | null;
   error: string | null;
+  streaming?: boolean;
+  streamedRows?: number;
+  truncated?: boolean;
 }
 
 /** Read-only, virtualized view of a console query result (or an error/affected-rows state). */
-export function ResultView({ result, error }: ResultViewProps) {
+export function ResultView({ result, error, streaming, streamedRows, truncated }: ResultViewProps) {
   if (error) {
     return (
       <div className="flex items-start gap-2 p-4 text-sm text-destructive">
         <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
         <span className="selectable whitespace-pre-wrap break-words">{error}</span>
+      </div>
+    );
+  }
+
+  // While streaming, show a live row count (the table renders once the stream completes).
+  if (streaming) {
+    return (
+      <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Streaming… {(streamedRows ?? 0).toLocaleString()} rows
       </div>
     );
   }
@@ -42,10 +55,10 @@ export function ResultView({ result, error }: ResultViewProps) {
     );
   }
 
-  return <ResultTable result={result} />;
+  return <ResultTable result={result} truncated={truncated} />;
 }
 
-function ResultTable({ result }: { result: QueryResult }) {
+function ResultTable({ result, truncated }: { result: QueryResult; truncated?: boolean }) {
   const parentRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
     count: result.rows.length,
@@ -108,7 +121,10 @@ function ResultTable({ result }: { result: QueryResult }) {
         </div>
       </div>
       <div className="border-t border-border px-3 py-1 text-xs text-muted-foreground">
-        {result.rows.length} rows · {result.elapsedMs} ms
+        {result.rows.length.toLocaleString()} rows · {result.elapsedMs} ms
+        {truncated ? (
+          <span className="ml-2 text-warning">· truncated at the streaming limit</span>
+        ) : null}
       </div>
     </div>
   );
