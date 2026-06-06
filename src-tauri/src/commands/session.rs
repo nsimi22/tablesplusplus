@@ -21,7 +21,12 @@ pub async fn connect(
         .get(&id)
         .ok_or_else(|| AppError::not_found("Connection not found"))?;
     let secret = secrets::get_password(&id)?;
-    let conn = build_connection(&cfg, secret).await?;
+    let ssh_secret = if cfg.ssh.is_some() {
+        secrets::get_ssh_secret(&id)?
+    } else {
+        None
+    };
+    let conn = build_connection(&cfg, secret, ssh_secret).await?;
     // Insert atomically; if a concurrent connect won the race, close our redundant pool.
     if let Some(extra) = registry.insert_if_absent(id, conn) {
         let _ = extra.close().await;

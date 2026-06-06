@@ -96,9 +96,8 @@ tablesplusplus/
 
 > Implemented layout notes (Phase 3): the backend entry is `src-tauri/src/lib.rs`
 > (`tablesplusplus_lib::run`) with a thin `main.rs`. Tauri 2 capabilities live in
-> `src-tauri/capabilities/default.json`. SSH tunneling is designed but **not yet
-> implemented** — `ssh/` will be added when it lands; `connect` errors clearly if an SSH
-> config is present. The detailed Phase 2 design lives in `docs/architecture.md`.
+> `src-tauri/capabilities/default.json`. SSH tunneling is implemented in `src-tauri/src/ssh/`
+> (russh local-forward; see §11). The detailed Phase 2 design lives in `docs/architecture.md`.
 
 > If the actual layout diverges from this during the build, **update this section** rather than
 > letting the doc drift.
@@ -381,6 +380,17 @@ npm run typecheck
   `QueryResult::next()` — both stream row-by-row without buffering the whole set. The streaming
   command holds an abort-on-drop guard so the DB query stops if the command is cancelled (tab
   closed). The grid still uses paged `execute_query`; app-generated DML/commits stay on it.
+- [2026-06-06] SSH — Optional per-connection tunnel (`src-tauri/src/ssh/`, russh). `open_tunnel`
+  authenticates to the bastion (password or private key + passphrase) and starts a local
+  `127.0.0.1:<ephemeral>` listener that forwards each accepted socket over a `direct-tcpip`
+  channel to the DB host; the driver connects to the local addr, so `host`/`port` are overridden
+  in `build_connection`. The tunnel is held by `DbConnection` (`_tunnel: Arc<SshTunnel>`) and torn
+  down on disconnect (Drop aborts the accept loop, closing the SSH session). SSH secret lives in
+  the keyring under `connection:{id}:ssh`; `key_path` (non-secret) is in `connections.json`.
+  v1 caveats: the server host key is accepted **without** `known_hosts` verification, `agent` auth
+  is unsupported (errors clearly), and over a tunnel the DB sees a `127.0.0.1` peer, so TLS
+  `verifyCa`/`verifyFull` will fail hostname checks — pair a tunnel with a non-verifying SSL mode.
+  Compile- and clippy-verified; not runtime-tested (no live bastion in CI/sandbox).
 - [2026-06-06] AI — Optional, bring-your-own-key SQL assistant (Text-to-SQL / Explain / Fix).
   Provider calls run in the **Rust backend** via `reqwest` (not the webview), so the strict CSP
   needs no `connect-src` exception; the API key lives in the OS keyring (`ai:{provider}:apiKey`),

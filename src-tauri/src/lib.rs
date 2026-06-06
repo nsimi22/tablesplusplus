@@ -7,6 +7,7 @@ mod config;
 mod db;
 mod error;
 mod secrets;
+mod ssh;
 
 use tauri::Manager;
 

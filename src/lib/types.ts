@@ -26,12 +26,16 @@ export interface AiSettingsInput {
 
 export type SslMode = "disable" | "prefer" | "require" | "verifyCa" | "verifyFull";
 
+export type SshAuthMethod = "password" | "agent" | "key";
+
 export interface SshConfig {
   host: string;
   port: number;
   user: string;
-  /** "password" | "agent" | "key"; secret material is stored in the keyring, never here. */
-  authMethod: "password" | "agent" | "key";
+  /** secret material (password / key passphrase) is stored in the keyring, never here. */
+  authMethod: SshAuthMethod;
+  /** Path to the private key file (for `key` auth); the passphrase is in the keyring. */
+  keyPath: string | null;
 }
 
 /** Non-secret connection metadata. The password lives only in the OS keyring. */
@@ -61,6 +65,8 @@ export interface ConnectionInput {
   color: string | null;
   /** Plaintext password; backend writes it to the keyring and never echoes it back. */
   password: string | null;
+  /** SSH secret (password or key passphrase); keyring-only, never echoed back. */
+  sshSecret: string | null;
 }
 
 export interface ColumnMeta {

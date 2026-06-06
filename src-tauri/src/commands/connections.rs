@@ -23,11 +23,15 @@ pub async fn save_connection(
 ) -> Result<ConnectionConfig, AppError> {
     let id = uuid::Uuid::new_v4().to_string();
     let wrote_secret = write_secret_if_present(&id, input.password.as_deref())?;
+    let wrote_ssh = write_ssh_secret_if_present(&id, input.ssh_secret.as_deref())?;
     let cfg = input.into_config(id.clone());
     if let Err(e) = store.upsert(cfg.clone()) {
-        // Don't leave an orphaned keyring entry for a connection that was never persisted.
+        // Don't leave orphaned keyring entries for a connection that was never persisted.
         if wrote_secret {
             let _ = secrets::delete_password(&id);
+        }
+        if wrote_ssh {
+            let _ = secrets::delete_ssh_secret(&id);
         }
         return Err(e);
     }
@@ -44,8 +48,9 @@ pub async fn update_connection(
     if store.get(&id).is_none() {
         return Err(AppError::not_found("Connection not found"));
     }
-    // A null/empty password leaves the stored secret untouched.
+    // A null/empty secret leaves the stored value untouched.
     write_secret_if_present(&id, input.password.as_deref())?;
+    write_ssh_secret_if_present(&id, input.ssh_secret.as_deref())?;
     let cfg = input.into_config(id.clone());
     store.upsert(cfg.clone())?;
     // The persisted config changed; evict any open pool so the next connect rebuilds it against
@@ -67,6 +72,7 @@ pub async fn delete_connection(
     }
     // Deleting the connection must also delete its keyring entries (CLAUDE.md §4.1).
     secrets::delete_password(&id)?;
+    secrets::delete_ssh_secret(&id)?;
     store.remove(&id)?;
     Ok(())
 }
@@ -80,16 +86,22 @@ pub async fn test_connection(
     id: Option<String>,
     input: Option<ConnectionInput>,
 ) -> Result<(), AppError> {
-    let (cfg, secret) = match (id, input) {
+    let (cfg, secret, ssh_secret) = match (id, input) {
         (_, Some(inp)) => {
             let secret = inp.password.clone().filter(|p| !p.is_empty());
-            (inp.into_config("__test__".to_string()), secret)
+            let ssh_secret = inp.ssh_secret.clone().filter(|p| !p.is_empty());
+            (inp.into_config("__test__".to_string()), secret, ssh_secret)
         }
         (Some(id), None) => {
             let cfg = store
                 .get(&id)
                 .ok_or_else(|| AppError::not_found("Connection not found"))?;
-            (cfg, secrets::get_password(&id)?)
+            let ssh_secret = if cfg.ssh.is_some() {
+                secrets::get_ssh_secret(&id)?
+            } else {
+                None
+            };
+            (cfg, secrets::get_password(&id)?, ssh_secret)
         }
         (None, None) => {
             return Err(AppError::internal(
@@ -98,7 +110,7 @@ pub async fn test_connection(
         }
     };
 
-    let conn = build_connection(&cfg, secret).await?;
+    let conn = build_connection(&cfg, secret, ssh_secret).await?;
     let result = conn.ping().await;
     let _ = conn.close().await;
     result
@@ -109,6 +121,17 @@ fn write_secret_if_present(id: &str, password: Option<&str>) -> Result<bool, App
     if let Some(pw) = password {
         if !pw.is_empty() {
             secrets::set_password(id, pw)?;
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Returns `true` if an SSH secret was actually written to the keyring.
+fn write_ssh_secret_if_present(id: &str, ssh_secret: Option<&str>) -> Result<bool, AppError> {
+    if let Some(s) = ssh_secret {
+        if !s.is_empty() {
+            secrets::set_ssh_secret(id, s)?;
             return Ok(true);
         }
     }

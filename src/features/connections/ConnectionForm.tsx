@@ -6,13 +6,21 @@ import { Label } from "@/components/ui/Label";
 import { Select } from "@/components/ui/Select";
 import { Spinner } from "@/components/ui/Spinner";
 import { cn } from "@/lib/utils";
-import { errorMessage, type ConnectionConfig, type ConnectionInput, type Engine } from "@/lib/types";
+import {
+  errorMessage,
+  type ConnectionConfig,
+  type ConnectionInput,
+  type Engine,
+  type SshAuthMethod,
+  type SshConfig,
+} from "@/lib/types";
 import {
   CONNECTION_COLORS,
   CONNECTION_COLOR_CLASS,
   DEFAULT_PORTS,
   ENGINES,
   SSL_MODES,
+  defaultSshConfig,
   emptyConnectionInput,
 } from "./connectionDefaults";
 import {
@@ -38,6 +46,7 @@ function toInput(config: ConnectionConfig): ConnectionInput {
     label: config.label ?? "",
     color: config.color ?? "primary",
     password: "", // never echoed back; blank means "leave unchanged"
+    sshSecret: "", // never echoed back
   };
 }
 
@@ -67,6 +76,12 @@ export function ConnectionForm({ editing, onSaved }: ConnectionFormProps) {
     const wasDefault = input.port === DEFAULT_PORTS[input.engine];
     patch({ engine, port: wasDefault ? DEFAULT_PORTS[engine] : input.port });
   };
+
+  const toggleSsh = (enabled: boolean) =>
+    patch({ ssh: enabled ? (input.ssh ?? defaultSshConfig()) : null, sshSecret: "" });
+
+  const patchSsh = (partial: Partial<SshConfig>) =>
+    patch({ ssh: { ...(input.ssh ?? defaultSshConfig()), ...partial } });
 
   const onTest = async () => {
     setTest({ state: "testing" });
@@ -192,6 +207,67 @@ export function ConnectionForm({ editing, onSaved }: ConnectionFormProps) {
               ))}
             </div>
           </Field>
+
+          <div className="col-span-2 rounded-md border border-border p-3">
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={!!input.ssh}
+                onChange={(e) => toggleSsh(e.target.checked)}
+                className="h-4 w-4 accent-primary"
+              />
+              Connect through an SSH tunnel
+            </label>
+
+            {input.ssh ? (
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <Field label="SSH Host" className="col-span-2">
+                  <Input
+                    value={input.ssh.host}
+                    onChange={(e) => patchSsh({ host: e.target.value })}
+                    placeholder="bastion.example.com"
+                  />
+                </Field>
+                <Field label="SSH Port">
+                  <Input
+                    type="number"
+                    value={input.ssh.port}
+                    onChange={(e) => patchSsh({ port: Number(e.target.value) || 22 })}
+                  />
+                </Field>
+                <Field label="SSH User">
+                  <Input value={input.ssh.user} onChange={(e) => patchSsh({ user: e.target.value })} />
+                </Field>
+                <Field label="Auth Method">
+                  <Select
+                    value={input.ssh.authMethod}
+                    onChange={(e) => patchSsh({ authMethod: e.target.value as SshAuthMethod })}
+                  >
+                    <option value="password">Password</option>
+                    <option value="key">Private Key</option>
+                  </Select>
+                </Field>
+                <Field label={input.ssh.authMethod === "key" ? "Key Passphrase" : "SSH Password"}>
+                  <Input
+                    type="password"
+                    value={input.sshSecret ?? ""}
+                    onChange={(e) => patch({ sshSecret: e.target.value })}
+                    placeholder={editing ? "•••••• (unchanged)" : ""}
+                    autoComplete="off"
+                  />
+                </Field>
+                {input.ssh.authMethod === "key" ? (
+                  <Field label="Private Key Path" className="col-span-2">
+                    <Input
+                      value={input.ssh.keyPath ?? ""}
+                      onChange={(e) => patchSsh({ keyPath: e.target.value || null })}
+                      placeholder="~/.ssh/id_ed25519"
+                    />
+                  </Field>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
         </div>
 
         <TestResult status={test} />

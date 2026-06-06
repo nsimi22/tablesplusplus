@@ -47,5 +47,11 @@ export function emptyConnectionInput(): ConnectionInput {
     label: "",
     color: "primary",
     password: "",
+    sshSecret: "",
   };
+}
+
+/** Default SSH config when the user enables a tunnel. */
+export function defaultSshConfig(): import("@/lib/types").SshConfig {
+  return { host: "", port: 22, user: "", authMethod: "password", keyPath: null };
 }

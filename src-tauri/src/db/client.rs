@@ -46,6 +46,9 @@ pub struct SshConfig {
     pub port: u16,
     pub user: String,
     pub auth_method: SshAuthMethod,
+    /// Path to the private key file (for `Key` auth). The passphrase, if any, is in the keyring.
+    #[serde(default)]
+    pub key_path: Option<String>,
 }
 
 /// Persisted, non-secret connection metadata (CLAUDE.md §4.1).
@@ -87,6 +90,9 @@ pub struct ConnectionInput {
     /// Plaintext password (optional). Present only when the user (re)enters it.
     #[serde(default)]
     pub password: Option<String>,
+    /// SSH secret (password or key passphrase), present only when (re)entered. Keyring-only.
+    #[serde(default)]
+    pub ssh_secret: Option<String>,
 }
 
 impl ConnectionInput {
@@ -335,27 +341,55 @@ pub trait DbClient: Send + Sync {
     async fn get_schema(&self) -> Result<Schema, AppError>;
 }
 
-/// Enum dispatch over the concrete clients. Cloning is cheap — clients hold pool handles
-/// (Arc internally), so commands clone a `DbConnection` out of the registry and drop the
-/// map guard *before* awaiting (no lock held across `.await`).
+/// Enum dispatch over the concrete clients.
 #[derive(Clone)]
-pub enum DbConnection {
+enum EngineClient {
     Postgres(PostgresClient),
     Mysql(MysqlClient),
 }
 
+/// A live connection: the engine client plus an optional SSH tunnel held alive for its lifetime.
+/// Cloning is cheap — clients hold pool handles (Arc internally) and the tunnel is `Arc`-shared —
+/// so commands clone a `DbConnection` out of the registry and drop the map guard *before*
+/// awaiting (no lock held across `.await`). When the last clone drops, the tunnel tears down.
+#[derive(Clone)]
+pub struct DbConnection {
+    engine: EngineClient,
+    _tunnel: Option<std::sync::Arc<crate::ssh::SshTunnel>>,
+}
+
 impl DbConnection {
+    pub fn new_postgres(
+        client: PostgresClient,
+        tunnel: Option<std::sync::Arc<crate::ssh::SshTunnel>>,
+    ) -> Self {
+        Self {
+            engine: EngineClient::Postgres(client),
+            _tunnel: tunnel,
+        }
+    }
+
+    pub fn new_mysql(
+        client: MysqlClient,
+        tunnel: Option<std::sync::Arc<crate::ssh::SshTunnel>>,
+    ) -> Self {
+        Self {
+            engine: EngineClient::Mysql(client),
+            _tunnel: tunnel,
+        }
+    }
+
     pub async fn ping(&self) -> Result<(), AppError> {
-        match self {
-            DbConnection::Postgres(c) => c.ping().await,
-            DbConnection::Mysql(c) => c.ping().await,
+        match &self.engine {
+            EngineClient::Postgres(c) => c.ping().await,
+            EngineClient::Mysql(c) => c.ping().await,
         }
     }
 
     pub async fn close(&self) -> Result<(), AppError> {
-        match self {
-            DbConnection::Postgres(c) => c.close().await,
-            DbConnection::Mysql(c) => c.close().await,
+        match &self.engine {
+            EngineClient::Postgres(c) => c.close().await,
+            EngineClient::Mysql(c) => c.close().await,
         }
     }
 
@@ -364,9 +398,9 @@ impl DbConnection {
         sql: String,
         params: Vec<CellValue>,
     ) -> Result<QueryResult, AppError> {
-        match self {
-            DbConnection::Postgres(c) => c.execute_query(sql, params).await,
-            DbConnection::Mysql(c) => c.execute_query(sql, params).await,
+        match &self.engine {
+            EngineClient::Postgres(c) => c.execute_query(sql, params).await,
+            EngineClient::Mysql(c) => c.execute_query(sql, params).await,
         }
     }
 
@@ -376,16 +410,16 @@ impl DbConnection {
         params: Vec<CellValue>,
         tx: ChunkSender,
     ) -> Result<(), AppError> {
-        match self {
-            DbConnection::Postgres(c) => c.stream_query(sql, params, tx).await,
-            DbConnection::Mysql(c) => c.stream_query(sql, params, tx).await,
+        match &self.engine {
+            EngineClient::Postgres(c) => c.stream_query(sql, params, tx).await,
+            EngineClient::Mysql(c) => c.stream_query(sql, params, tx).await,
         }
     }
 
     pub async fn get_schema(&self) -> Result<Schema, AppError> {
-        match self {
-            DbConnection::Postgres(c) => c.get_schema().await,
-            DbConnection::Mysql(c) => c.get_schema().await,
+        match &self.engine {
+            EngineClient::Postgres(c) => c.get_schema().await,
+            EngineClient::Mysql(c) => c.get_schema().await,
         }
     }
 }
