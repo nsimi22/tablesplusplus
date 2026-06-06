@@ -35,11 +35,14 @@ impl AiSettingsStore {
     }
 
     pub fn save(&self, settings: AiSettings) -> Result<(), AppError> {
-        *self.lock() = settings;
+        // Hold the lock across the update + serialize so the persisted bytes match the in-memory
+        // state even under concurrent saves.
+        let mut guard = self.lock();
+        *guard = settings;
         if let Some(parent) = self.path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let data = serde_json::to_vec_pretty(&*self.lock())?;
+        let data = serde_json::to_vec_pretty(&*guard)?;
         std::fs::write(&self.path, data)?;
         Ok(())
     }

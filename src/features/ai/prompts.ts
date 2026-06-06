@@ -21,12 +21,12 @@ export function buildSchemaContext(schema: Schema | undefined): string {
   return lines.join("\n");
 }
 
-/** Strip Markdown code fences / leading "sql" the model may wrap around a query. */
+/** Extract SQL from the model output, unwrapping a Markdown code block even when it's
+ *  surrounded by conversational text (no anchors). */
 export function stripSqlFences(text: string): string {
-  let out = text.trim();
-  const fence = out.match(/^```(?:sql)?\s*([\s\S]*?)\s*```$/i);
-  if (fence) out = fence[1].trim();
-  return out;
+  const out = text.trim();
+  const fence = out.match(/```(?:sql)?\s*([\s\S]*?)\s*```/i);
+  return fence ? fence[1].trim() : out;
 }
 
 export function textToSqlPrompts(args: {

@@ -116,6 +116,28 @@ export function SqlConsole({
     return text.trim();
   }, [sql]);
 
+  /** Apply AI output via Monaco so existing content and undo/redo history are preserved.
+   *  "insert" replaces the selection (or inserts at the cursor); "replace" swaps the selection,
+   *  or the whole document when nothing is selected. Falls back to the store if no editor. */
+  const applyToEditor = useCallback(
+    (text: string, mode: "insert" | "replace") => {
+      const ed = editorRef.current;
+      const model = ed?.getModel();
+      if (!ed || !model) {
+        setTabSql(tabId, text);
+        return;
+      }
+      const selection = ed.getSelection();
+      const range =
+        mode === "replace" && (!selection || selection.isEmpty())
+          ? model.getFullModelRange()
+          : (selection ?? model.getFullModelRange());
+      ed.executeEdits("ai-assistant", [{ range, text, forceMoveMarkers: true }]);
+      ed.focus();
+    },
+    [tabId, setTabSql],
+  );
+
   const generateSql = useCallback(async () => {
     const request = aiPrompt.trim();
     if (!request) return;
@@ -124,11 +146,11 @@ export function SqlConsole({
     try {
       const { system, prompt } = textToSqlPrompts({ engine: connection.engine, schema, request });
       const text = await ai.mutateAsync({ system, prompt });
-      setTabSql(tabId, stripSqlFences(text));
+      applyToEditor(stripSqlFences(text), "insert");
     } catch (err) {
       setAiError(errorMessage(err));
     }
-  }, [aiPrompt, ai, connection.engine, schema, setTabSql, tabId]);
+  }, [aiPrompt, ai, connection.engine, schema, applyToEditor]);
 
   const explainSql = useCallback(async () => {
     const target = currentSql();
@@ -152,11 +174,11 @@ export function SqlConsole({
     try {
       const { system, prompt } = fixPrompts({ engine: connection.engine, sql: target, error });
       const text = await ai.mutateAsync({ system, prompt });
-      setTabSql(tabId, stripSqlFences(text));
+      applyToEditor(stripSqlFences(text), "replace");
     } catch (err) {
       setAiError(errorMessage(err));
     }
-  }, [currentSql, error, ai, connection.engine, setTabSql, tabId]);
+  }, [currentSql, error, ai, connection.engine, applyToEditor]);
 
   const run = useCallback(async () => {
     const ed = editorRef.current;
@@ -198,7 +220,7 @@ export function SqlConsole({
         <Input
           value={aiPrompt}
           onChange={(e) => setAiPrompt(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && generateSql()}
+          onKeyDown={(e) => e.key === "Enter" && !ai.isPending && generateSql()}
           placeholder="Ask AI to write SQL…"
           className="h-8 max-w-md text-xs"
         />

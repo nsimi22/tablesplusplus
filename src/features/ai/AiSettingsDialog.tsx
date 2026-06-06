@@ -47,16 +47,21 @@ export function AiSettingsDialog({ open, onClose }: { open: boolean; onClose: ()
   const [model, setModel] = useState("claude-opus-4-8");
   const [apiKey, setApiKey] = useState("");
   const [status, setStatus] = useState<Status>({ state: "idle" });
+  const [initialized, setInitialized] = useState(false);
 
-  // Sync from stored settings whenever the dialog opens.
+  // Initialize the form once per open. Re-running on every `settings` change would wipe
+  // unsaved edits whenever the cache updates (e.g. after a save, or a background refetch).
   useEffect(() => {
-    if (open && settings) {
+    if (!open) {
+      setInitialized(false);
+    } else if (!initialized && settings) {
       setProvider(settings.provider);
       setModel(settings.model);
       setApiKey("");
       setStatus({ state: "idle" });
+      setInitialized(true);
     }
-  }, [open, settings]);
+  }, [open, settings, initialized]);
 
   const meta = PROVIDERS.find((p) => p.value === provider) ?? PROVIDERS[0];
 

@@ -65,12 +65,14 @@ pub async fn complete(
     system: &str,
     prompt: &str,
 ) -> Result<String, AppError> {
-    let client = reqwest::Client::new();
+    // Reuse one client so connection pools are shared across calls.
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    let client = CLIENT.get_or_init(reqwest::Client::new);
     match provider {
-        AiProvider::Anthropic => anthropic_complete(&client, model, api_key, system, prompt).await,
+        AiProvider::Anthropic => anthropic_complete(client, model, api_key, system, prompt).await,
         AiProvider::OpenAi => {
             openai_complete(
-                &client,
+                client,
                 "https://api.openai.com/v1/chat/completions",
                 model,
                 api_key,
@@ -82,7 +84,7 @@ pub async fn complete(
         }
         AiProvider::OpenRouter => {
             openai_complete(
-                &client,
+                client,
                 "https://openrouter.ai/api/v1/chat/completions",
                 model,
                 api_key,
