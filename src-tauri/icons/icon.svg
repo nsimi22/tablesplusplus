@@ -1,0 +1,22 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="512" y1="64" x2="512" y2="960" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1D232E"/>
+      <stop offset="1" stop-color="#10141B"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="512" y1="362" x2="512" y2="662" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4FA8F0"/>
+      <stop offset="1" stop-color="#2B82DB"/>
+    </linearGradient>
+  </defs>
+
+  <!-- App tile -->
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="url(#bg)"/>
+  <rect x="66" y="66" width="892" height="892" rx="198" stroke="#39414F" stroke-width="4" fill="none" opacity="0.55"/>
+
+  <!-- ++ : each plus is one path (no overlap seams), rounded outer corners -->
+  <path fill="url(#blue)" stroke="#FFFFFF" stroke-width="12" stroke-linejoin="round" d="
+    M282 390 a28 28 0 0 1 28 -28 h38 a28 28 0 0 1 28 28 v74 h74 a28 28 0 0 1 28 28 v40 a28 28 0 0 1 -28 28 h-74 v74 a28 28 0 0 1 -28 28 h-38 a28 28 0 0 1 -28 -28 v-74 h-74 a28 28 0 0 1 -28 -28 v-40 a28 28 0 0 1 28 -28 h74 z"/>
+  <path fill="url(#blue)" stroke="#FFFFFF" stroke-width="12" stroke-linejoin="round" d="
+    M646 390 a28 28 0 0 1 28 -28 h38 a28 28 0 0 1 28 28 v74 h74 a28 28 0 0 1 28 28 v40 a28 28 0 0 1 -28 28 h-74 v74 a28 28 0 0 1 -28 28 h-38 a28 28 0 0 1 -28 -28 v-74 h-74 a28 28 0 0 1 -28 -28 v-40 a28 28 0 0 1 28 -28 h74 z"/>
+</svg>
