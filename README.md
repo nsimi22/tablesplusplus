@@ -58,7 +58,8 @@ SSL/TLS modes are first-class per connection (via `native-tls`). SSH tunneling i
 
 ## Install
 
-Pre-built installers are attached to each [GitHub Release](../../releases):
+Pre-built installers are attached to each
+[GitHub Release](https://github.com/nsimi22/tablesplusplus/releases):
 
 | Platform | Artifact |
 |----------|----------|
