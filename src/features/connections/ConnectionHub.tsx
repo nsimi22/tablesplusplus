@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { Database, Plus, Sparkles, Trash2, Zap } from "lucide-react";
+import { Plus, Sparkles, Trash2, Zap } from "lucide-react";
+import { Wordmark } from "@/components/Wordmark";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { Badge } from "@/components/ui/Badge";
@@ -41,10 +42,7 @@ export function ConnectionHub() {
     <div className="flex h-full">
       <aside className="flex w-72 flex-col border-r border-border bg-surface">
         <header className="flex items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-2 text-sm font-semibold">
-            <Database className="h-4 w-4 text-primary" />
-            Tables++
-          </div>
+          <Wordmark />
           <div className="flex items-center gap-0.5">
             <ThemeToggle />
             <Button
