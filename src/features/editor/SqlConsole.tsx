@@ -125,6 +125,14 @@ export function SqlConsole({
   const ai = useAiGenerate();
   const editorRef = useRef<CodeEditor | null>(null);
   const runRef = useRef<() => void>(() => {});
+  // Guards async state updates if the tab is closed mid-stream.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
   const [result, setResult] = useState<QueryResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [streaming, setStreaming] = useState(false);
@@ -254,21 +262,23 @@ export function SqlConsole({
           columns = chunk.columns;
         } else if (chunk.kind === "rows") {
           for (const r of chunk.rows) rows.push(r);
-          setStreamedRows(rows.length);
+          if (mountedRef.current) setStreamedRows(rows.length);
         } else {
           elapsedMs = chunk.elapsedMs;
           rowsAffected = chunk.rowsAffected;
           didTruncate = chunk.truncated;
         }
       });
+      if (!mountedRef.current) return;
       setResult({ columns, rows, rowsAffected, elapsedMs });
       setTruncated(didTruncate);
     } catch (err) {
+      if (!mountedRef.current) return;
       // Surface the error; keep any rows already streamed so partial output is visible.
       setResult(rows.length || columns.length ? { columns, rows, rowsAffected: null, elapsedMs } : null);
       setError(errorMessage(err));
     } finally {
-      setStreaming(false);
+      if (mountedRef.current) setStreaming(false);
     }
   }, [currentSql, streaming, connection.id]);
 

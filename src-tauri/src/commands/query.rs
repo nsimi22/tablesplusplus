@@ -42,14 +42,30 @@ pub async fn execute_query_stream(
     let (tx, mut rx) = mpsc::channel::<StreamChunk>(8);
     let producer = tokio::spawn(async move { conn.stream_query(sql, params, tx).await });
 
+    // Abort the running query if this command returns early or is cancelled/dropped by Tauri
+    // (e.g. the user closes the tab), so an expensive query doesn't keep running on the server.
+    struct AbortOnDrop(Option<tokio::task::JoinHandle<Result<(), AppError>>>);
+    impl Drop for AbortOnDrop {
+        fn drop(&mut self) {
+            if let Some(handle) = self.0.as_ref() {
+                handle.abort();
+            }
+        }
+    }
+    let mut guard = AbortOnDrop(Some(producer));
+
     while let Some(chunk) = rx.recv().await {
         on_event.send(chunk).map_err(|e| {
             AppError::internal("Failed to stream results to the UI").with_detail(e.to_string())
         })?;
     }
 
-    // Surface any error the producer hit (after the partial chunks already delivered).
-    producer
-        .await
-        .map_err(|e| AppError::internal("Streaming task failed").with_detail(e.to_string()))?
+    // Stream finished cleanly; take the handle out (so the guard won't abort) and surface any
+    // error the producer hit after the partial chunks were delivered.
+    match guard.0.take() {
+        Some(producer) => producer
+            .await
+            .map_err(|e| AppError::internal("Streaming task failed").with_detail(e.to_string()))?,
+        None => Ok(()),
+    }
 }

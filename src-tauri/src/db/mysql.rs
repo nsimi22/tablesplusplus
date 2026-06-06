@@ -139,9 +139,6 @@ impl DbClient for MysqlClient {
         params: Vec<CellValue>,
         tx: ChunkSender,
     ) -> Result<(), AppError> {
-        // mysql_async buffers the result set, so we collect once and then forward in batches —
-        // this still bounds per-message IPC size and drives progress events, though it does not
-        // stream from the server the way the Postgres path does.
         let started = Instant::now();
         let mut conn = self.pool.get_conn().await?;
         let mut qr = conn.exec_iter(sql.as_str(), to_my_params(params)).await?;
@@ -156,15 +153,14 @@ impl DbClient for MysqlClient {
                 charset: c.character_set(),
             })
             .collect();
-        let rows: Vec<Row> = qr.collect::<Row>().await?;
-        let affected = qr.affected_rows();
-        let elapsed_ms = started.elapsed().as_millis() as u64;
 
         if specs.is_empty() {
+            // Non-row statement: drain (no-op) and report affected rows.
+            let affected = qr.affected_rows();
             let _ = tx
                 .send(StreamChunk::Done {
                     rows_affected: Some(affected),
-                    elapsed_ms,
+                    elapsed_ms: started.elapsed().as_millis() as u64,
                     truncated: false,
                 })
                 .await;
@@ -183,9 +179,11 @@ impl DbClient for MysqlClient {
             return Ok(());
         }
 
+        // Iterate row-by-row so we never buffer the whole result set in memory.
         let mut batch: Vec<Vec<CellValue>> = Vec::with_capacity(STREAM_BATCH);
+        let mut total = 0usize;
         let mut truncated = false;
-        for (total, row) in rows.iter().enumerate() {
+        while let Some(row) = qr.next().await? {
             let cells: Vec<CellValue> = specs
                 .iter()
                 .enumerate()
@@ -195,6 +193,7 @@ impl DbClient for MysqlClient {
                 })
                 .collect();
             batch.push(cells);
+            total += 1;
             if batch.len() >= STREAM_BATCH
                 && tx
                     .send(StreamChunk::Rows {
@@ -205,7 +204,7 @@ impl DbClient for MysqlClient {
             {
                 return Ok(());
             }
-            if total + 1 >= STREAM_MAX_ROWS {
+            if total >= STREAM_MAX_ROWS {
                 truncated = true;
                 break;
             }
@@ -216,7 +215,7 @@ impl DbClient for MysqlClient {
         let _ = tx
             .send(StreamChunk::Done {
                 rows_affected: None,
-                elapsed_ms,
+                elapsed_ms: started.elapsed().as_millis() as u64,
                 truncated,
             })
             .await;
