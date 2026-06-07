@@ -295,14 +295,19 @@ export function SqlConsole({
     }
   }, [currentSql, streaming, connection.id, addHistory]);
 
-  /** Load a past query into the editor (preserves undo; focuses the editor). */
+  /** Load a past query into the editor. Uses executeEdits (not setValue) so the current query
+   *  stays on the undo stack — an accidental click is recoverable with Ctrl/Cmd+Z. */
   const loadIntoEditor = useCallback(
     (text: string) => {
-      setTabSql(tabId, text);
       const ed = editorRef.current;
-      if (ed) {
-        ed.setValue(text);
+      const model = ed?.getModel();
+      if (ed && model) {
+        ed.executeEdits("history", [
+          { range: model.getFullModelRange(), text, forceMoveMarkers: true },
+        ]);
         ed.focus();
+      } else {
+        setTabSql(tabId, text);
       }
     },
     [tabId, setTabSql],

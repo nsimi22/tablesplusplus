@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { History, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -40,6 +40,16 @@ export function HistoryPanel({ onPick }: HistoryPanelProps) {
     const q = search.trim().toLowerCase();
     return q ? entries.filter((e) => e.sql.toLowerCase().includes(q)) : entries;
   }, [entries, search]);
+
+  // Stable callbacks so memoized rows don't re-render on every keystroke in the search box.
+  const handlePick = useCallback(
+    (sql: string) => {
+      onPick(sql);
+      setOpen(false);
+    },
+    [onPick],
+  );
+  const handleRemove = useCallback((id: string) => remove(id), [remove]);
 
   return (
     <div ref={ref} className="relative">
@@ -89,11 +99,8 @@ export function HistoryPanel({ onPick }: HistoryPanelProps) {
                 <HistoryRow
                   key={entry.id}
                   entry={entry}
-                  onPick={() => {
-                    onPick(entry.sql);
-                    setOpen(false);
-                  }}
-                  onRemove={() => remove(entry.id)}
+                  onPick={handlePick}
+                  onRemove={handleRemove}
                 />
               ))
             )}
@@ -104,25 +111,29 @@ export function HistoryPanel({ onPick }: HistoryPanelProps) {
   );
 }
 
-function HistoryRow({
+const HistoryRow = memo(function HistoryRow({
   entry,
   onPick,
   onRemove,
 }: {
   entry: HistoryEntry;
-  onPick: () => void;
-  onRemove: () => void;
+  onPick: (sql: string) => void;
+  onRemove: (id: string) => void;
 }) {
   const meta =
     entry.status === "error"
       ? "error"
       : `${(entry.rowCount ?? 0).toLocaleString()} rows · ${entry.elapsedMs ?? 0} ms`;
 
+  // Cap before the regex/normalize so a pathologically large query doesn't churn on each render.
+  const raw = entry.sql.length > 200 ? `${entry.sql.slice(0, 200)}…` : entry.sql;
+  const preview = raw.replace(/\s+/g, " ").trim();
+
   return (
     <div className="group flex items-center gap-2 border-b border-border/50 px-2 hover:bg-accent">
       <button
         type="button"
-        onClick={onPick}
+        onClick={() => onPick(entry.sql)}
         title={entry.sql}
         className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
       >
@@ -132,15 +143,13 @@ function HistoryRow({
             entry.status === "error" ? "bg-destructive" : "bg-success",
           )}
         />
-        <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">
-          {entry.sql.replace(/\s+/g, " ").trim()}
-        </span>
+        <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">{preview}</span>
         <span className="shrink-0 text-[10px] text-muted-foreground">{meta}</span>
         <span className="shrink-0 text-[10px] text-muted-foreground">{timeAgo(entry.at)}</span>
       </button>
       <button
         type="button"
-        onClick={onRemove}
+        onClick={() => onRemove(entry.id)}
         aria-label="Remove from history"
         className="shrink-0 p-1 text-muted-foreground opacity-0 hover:text-destructive group-hover:opacity-100"
       >
@@ -148,7 +157,7 @@ function HistoryRow({
       </button>
     </div>
   );
-}
+});
 
 function timeAgo(at: number): string {
   const secs = Math.max(0, Math.floor((Date.now() - at) / 1000));
