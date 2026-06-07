@@ -6,6 +6,12 @@ name: Release
 # which case the tag is created on the selected commit. Either way the tag must match the app
 # version in the manifests (a guard enforces this), so a manual run can't mislabel the release.
 #
+# NEVER dispatch with the tag of an ALREADY-PUBLISHED release: it rebuilds and re-uploads the
+# assets onto the live release, and the matrix jobs' latest.json merge can race — a 2026-06-07
+# dispatch did this to v0.3.0, leaving a stale darwin signature in latest.json and breaking
+# updater signature verification for every installed app. Fix a bad release with a new patch
+# tag instead.
+#
 # Required repository secrets (Settings → Secrets and variables → Actions):
 #   TAURI_SIGNING_PRIVATE_KEY           Tauri updater private key (minisign). Must match the
 #                                       `plugins.updater.pubkey` in src-tauri/tauri.conf.json.
