@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Plus, Sparkles, Trash2, Zap } from "lucide-react";
+import { ArrowLeft, Plus, Sparkles, Trash2, Zap } from "lucide-react";
 import { Wordmark } from "@/components/Wordmark";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
@@ -19,6 +19,8 @@ import {
 
 export function ConnectionHub() {
   const { data: connections, isLoading } = useConnections();
+  const openConnectionIds = useWorkspaceStore((s) => s.openConnectionIds);
+  const setHubOpen = useWorkspaceStore((s) => s.setHubOpen);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [creating, setCreating] = useState(true);
   const [showAiSettings, setShowAiSettings] = useState(false);
@@ -44,6 +46,17 @@ export function ConnectionHub() {
         <header className="flex items-center justify-between px-4 py-3">
           <Wordmark />
           <div className="flex items-center gap-0.5">
+            {openConnectionIds.length > 0 ? (
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => setHubOpen(false)}
+                aria-label="Back to workspace"
+                title="Back to workspace"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+            ) : null}
             <ThemeToggle />
             <Button
               size="icon"
@@ -73,6 +86,7 @@ export function ConnectionHub() {
                 key={conn.id}
                 conn={conn}
                 active={!creating && conn.id === selectedId}
+                isOpen={openConnectionIds.includes(conn.id)}
                 onSelect={() => selectConnection(conn.id)}
               />
             ))
@@ -105,15 +119,17 @@ export function ConnectionHub() {
 function ConnectionListItem({
   conn,
   active,
+  isOpen,
   onSelect,
 }: {
   conn: ConnectionConfig;
   active: boolean;
+  isOpen: boolean;
   onSelect: () => void;
 }) {
   const connect = useConnect();
   const del = useDeleteConnection();
-  const enterWorkspace = useWorkspaceStore((s) => s.enterWorkspace);
+  const openConnection = useWorkspaceStore((s) => s.openConnection);
   const [error, setError] = useState<string | null>(null);
   // Two-click confirm guards against accidental deletion (reliable in the Tauri webview,
   // unlike window.confirm). Resets when the pointer leaves the row.
@@ -122,9 +138,14 @@ function ConnectionListItem({
   const onConnect = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setError(null);
+    // Already open — just focus it (and close the hub) without re-opening the pool.
+    if (isOpen) {
+      openConnection(conn.id);
+      return;
+    }
     try {
       await connect.mutateAsync(conn.id);
-      enterWorkspace(conn.id);
+      openConnection(conn.id);
     } catch (err) {
       setError(errorMessage(err));
     }
@@ -157,6 +178,9 @@ function ConnectionListItem({
           )}
         />
         <span className="flex-1 truncate text-sm">{conn.label || conn.host}</span>
+        {isOpen ? (
+          <span className="shrink-0 text-[10px] font-semibold tracking-wide text-success">OPEN</span>
+        ) : null}
         <Badge variant="default" className="shrink-0">
           {conn.engine === "postgres" ? "PG" : "MySQL"}
         </Badge>
@@ -166,7 +190,13 @@ function ConnectionListItem({
           {conn.user}@{conn.host}:{conn.port}/{conn.database}
         </span>
         <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-          <Button size="icon" variant="ghost" onClick={onConnect} aria-label="Connect">
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={onConnect}
+            aria-label={isOpen ? "Switch to connection" : "Connect"}
+            title={isOpen ? "Switch to connection" : "Connect"}
+          >
             {connect.isPending ? <Spinner /> : <Zap className="h-3.5 w-3.5" />}
           </Button>
           <Button

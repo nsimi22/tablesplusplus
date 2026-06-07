@@ -4,11 +4,13 @@ import { AppUpdater } from "@/features/updates/AppUpdater";
 import { useWorkspaceStore } from "@/store/useWorkspaceStore";
 
 export default function App() {
-  const activeConnectionId = useWorkspaceStore((s) => s.activeConnectionId);
+  const openConnectionIds = useWorkspaceStore((s) => s.openConnectionIds);
+  const hubOpen = useWorkspaceStore((s) => s.hubOpen);
+  const showHub = hubOpen || openConnectionIds.length === 0;
 
   return (
     <div className="h-full w-full bg-background text-foreground">
-      {activeConnectionId ? <Workspace /> : <ConnectionHub />}
+      {showHub ? <ConnectionHub /> : <Workspace />}
       <AppUpdater />
     </div>
   );
