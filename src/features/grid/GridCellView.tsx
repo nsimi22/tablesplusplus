@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Maximize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { CellValue } from "@/lib/types";
 import { displayCell, editableText, isEditable } from "./cell";
@@ -10,11 +11,14 @@ interface GridCellViewProps {
   edited?: CellValue;
   /** When true, the cell is read-only (e.g. a row marked for deletion). */
   disabled?: boolean;
+  /** Open the full-value detail viewer for this cell (grid data rows only). */
+  onExpand?: () => void;
   onCommit: (raw: string) => void;
 }
 
-/** A single grid cell. Double-click to edit scalar values; Enter commits, Esc cancels. */
-export function GridCellView({ width, value, edited, disabled, onCommit }: GridCellViewProps) {
+/** A single grid cell. Double-click to edit scalar values; Enter commits, Esc cancels.
+ *  Non-editable values (json/bytes) open the detail viewer on double-click instead. */
+export function GridCellView({ width, value, edited, disabled, onExpand, onCommit }: GridCellViewProps) {
   const [editing, setEditing] = useState(false);
 
   // Close an open editor if the row becomes read-only (e.g. marked for deletion mid-edit).
@@ -26,16 +30,18 @@ export function GridCellView({ width, value, edited, disabled, onCommit }: GridC
   const isNull = display.kind === "null";
   const text = displayCell(display);
 
-  const startEdit = () => {
-    if (!disabled && isEditable(value)) setEditing(true);
+  const onDoubleClick = () => {
+    if (disabled) return;
+    if (isEditable(value)) setEditing(true);
+    else onExpand?.(); // json/bytes can't be inline-edited — show them in the viewer
   };
 
   return (
     <div
       style={{ width }}
-      onDoubleClick={startEdit}
+      onDoubleClick={onDoubleClick}
       className={cn(
-        "flex h-full shrink-0 items-center border-r border-border/60 px-2 text-sm",
+        "group/cell relative flex h-full shrink-0 items-center border-r border-border/60 px-2 text-sm",
         edited ? "bg-warning/20" : "",
       )}
     >
@@ -48,18 +54,31 @@ export function GridCellView({ width, value, edited, disabled, onCommit }: GridC
           }}
         />
       ) : (
-        <span
-          className={cn(
-            "selectable truncate",
-            isNull ? "italic text-muted-foreground/60" : "",
-            display.kind === "int" || display.kind === "float" || display.kind === "decimal"
-              ? "tabular-nums"
-              : "",
-          )}
-          title={text}
-        >
-          {text}
-        </span>
+        <>
+          <span
+            className={cn(
+              "selectable truncate",
+              isNull ? "italic text-muted-foreground/60" : "",
+              display.kind === "int" || display.kind === "float" || display.kind === "decimal"
+                ? "tabular-nums"
+                : "",
+            )}
+            title={text}
+          >
+            {text}
+          </span>
+          {onExpand && !disabled ? (
+            <button
+              type="button"
+              onClick={onExpand}
+              aria-label="View full value"
+              title="View full value"
+              className="absolute right-1 top-1/2 hidden -translate-y-1/2 rounded bg-surface-raised/90 p-0.5 text-muted-foreground hover:text-foreground group-hover/cell:block"
+            >
+              <Maximize2 className="h-3 w-3" />
+            </button>
+          ) : null}
+        </>
       )}
     </div>
   );

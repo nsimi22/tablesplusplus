@@ -33,6 +33,7 @@ import {
 } from "@/features/workspace/sql";
 import { useExecuteSql } from "@/features/workspace/hooks";
 import { executeQueryStream } from "@/lib/ipc";
+import { CellDetailDialog, type CellDetail } from "@/features/cell/CellDetailDialog";
 import { ExportMenu } from "@/features/export/ExportMenu";
 import {
   chooseExportPath,
@@ -95,6 +96,7 @@ export function DataGrid({
   const insertIdRef = useRef(0);
   const [commitError, setCommitError] = useState<string | null>(null);
   const [exportNote, setExportNote] = useState<string | null>(null);
+  const [detail, setDetail] = useState<CellDetail | null>(null);
 
   // Reset table-scoped state *during render* when the table/connection changes, so the very first
   // render of a new table can't query it with the previous table's page/filter/sort (which could
@@ -173,6 +175,11 @@ export function DataGrid({
       return null;
     });
     setPage(0);
+  };
+
+  const openDetail = (rowIndex: number, colIndex: number) => {
+    const cell = edits[rowIndex]?.[colIndex] ?? rows[rowIndex]?.[colIndex];
+    if (cell) setDetail({ columnName: columns[colIndex]?.name ?? "", cell });
   };
 
   const setCellEdit = (rowIndex: number, colIndex: number, raw: string) => {
@@ -389,6 +396,7 @@ export function DataGrid({
         sort={sort}
         onSort={onSort}
         onEdit={setCellEdit}
+        onExpand={openDetail}
         onToggleDelete={toggleDelete}
         onInsertEdit={setInsertCell}
         onDiscardInsert={discardInsert}
@@ -451,6 +459,8 @@ export function DataGrid({
           onCommit={commit}
         />
       ) : null}
+
+      <CellDetailDialog detail={detail} onClose={() => setDetail(null)} />
     </div>
   );
 }
@@ -529,6 +539,7 @@ interface GridBodyProps {
   sort: SortSpec | null;
   onSort: (column: string) => void;
   onEdit: (rowIndex: number, colIndex: number, raw: string) => void;
+  onExpand: (rowIndex: number, colIndex: number) => void;
   onToggleDelete: (rowIndex: number) => void;
   onInsertEdit: (id: number, colIndex: number, raw: string) => void;
   onDiscardInsert: (id: number) => void;
@@ -545,6 +556,7 @@ function GridBody({
   sort,
   onSort,
   onEdit,
+  onExpand,
   onToggleDelete,
   onInsertEdit,
   onDiscardInsert,
@@ -656,6 +668,7 @@ function GridBody({
                   value={rows[rowIndex][colIndex]}
                   edited={rowEdits?.[colIndex]}
                   disabled={deleted}
+                  onExpand={() => onExpand(rowIndex, colIndex)}
                   onCommit={(raw) => onEdit(rowIndex, colIndex, raw)}
                 />
               ))}
