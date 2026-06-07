@@ -20,7 +20,12 @@ import {
 import { useExecuteSql } from "@/features/workspace/hooks";
 import { executeQueryStream } from "@/lib/ipc";
 import { ExportMenu } from "@/features/export/ExportMenu";
-import { copyRowsToClipboard, exportRowsToFile, type ExportFormat } from "@/features/export/exportActions";
+import {
+  chooseExportPath,
+  copyRowsToClipboard,
+  writeRowsToPath,
+  type ExportFormat,
+} from "@/features/export/exportActions";
 import { CommitBar } from "./CommitBar";
 import { GridCellView } from "./GridCellView";
 
@@ -150,10 +155,13 @@ export function DataGrid({
   };
 
   // Export the entire (filtered) table, not just the visible page: stream the unpaged SELECT
-  // and serialize the accumulated rows. Safe to re-run — it's an app-generated SELECT.
+  // and serialize the accumulated rows. Safe to re-run — it's an app-generated SELECT. The path
+  // is chosen first so cancelling the dialog skips the (potentially large) fetch entirely.
   const exportAll = async (format: ExportFormat) => {
     setExportNote(null);
     try {
+      const path = await chooseExportPath(format, table);
+      if (!path) return;
       const { sql, params } = buildSelect({ engine: connection.engine, schema, table, filter });
       const cols: ColumnMeta[] = [];
       const allRows: CellValue[][] = [];
@@ -163,13 +171,8 @@ export function DataGrid({
         else if (chunk.kind === "rows") for (const r of chunk.rows) allRows.push(r);
         else didTruncate = chunk.truncated;
       });
-      const saved = await exportRowsToFile({
-        columns: cols.length ? cols : columns,
-        rows: allRows,
-        format,
-        defaultName: table,
-      });
-      if (saved && didTruncate) {
+      await writeRowsToPath(path, cols.length ? cols : columns, allRows, format);
+      if (didTruncate) {
         setExportNote(
           `Exported ${allRows.length.toLocaleString()} rows (stopped at the streaming limit).`,
         );
