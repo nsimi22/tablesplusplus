@@ -107,6 +107,10 @@ export function buildUpdate(args: {
   where: ColumnValue[];
 }): { sql: string; params: CellValue[] } {
   const { engine, schema, table, set, where } = args;
+  // Refuse to build an unconditional UPDATE — an empty WHERE would rewrite the whole table.
+  if (where.length === 0) {
+    throw new Error("Refusing to build an UPDATE with no WHERE conditions.");
+  }
   const params: CellValue[] = [];
   let i = 1;
 
@@ -127,6 +131,57 @@ export function buildUpdate(args: {
     .join(" AND ");
 
   const sql = `UPDATE ${qualified(engine, schema, table)} SET ${setClause} WHERE ${whereClause}`;
+  return { sql, params };
+}
+
+/** Build a parameterized INSERT for a single new row. Columns the user never set are omitted so
+ *  the database applies its defaults (serials, DEFAULT, etc.); an empty row inserts all defaults. */
+export function buildInsert(args: {
+  engine: Engine;
+  schema: string;
+  table: string;
+  values: ColumnValue[];
+}): { sql: string; params: CellValue[] } {
+  const { engine, schema, table, values } = args;
+  if (values.length === 0) {
+    const sql =
+      engine === "postgres"
+        ? `INSERT INTO ${qualified(engine, schema, table)} DEFAULT VALUES`
+        : `INSERT INTO ${qualified(engine, schema, table)} () VALUES ()`;
+    return { sql, params: [] };
+  }
+  const params: CellValue[] = [];
+  const cols = values.map((v) => quoteIdent(engine, v.column)).join(", ");
+  const placeholders = values
+    .map((v, i) => {
+      params.push(v.value);
+      return placeholder(engine, i + 1);
+    })
+    .join(", ");
+  const sql = `INSERT INTO ${qualified(engine, schema, table)} (${cols}) VALUES (${placeholders})`;
+  return { sql, params };
+}
+
+/** Build a parameterized DELETE matching a single row by its primary-key columns. */
+export function buildDelete(args: {
+  engine: Engine;
+  schema: string;
+  table: string;
+  where: ColumnValue[];
+}): { sql: string; params: CellValue[] } {
+  const { engine, schema, table, where } = args;
+  // Refuse to build an unconditional DELETE — an empty WHERE would wipe the whole table.
+  if (where.length === 0) {
+    throw new Error("Refusing to build a DELETE with no WHERE conditions.");
+  }
+  const params: CellValue[] = [];
+  const whereClause = where
+    .map((c, i) => {
+      params.push(c.value);
+      return `${quoteIdent(engine, c.column)} = ${placeholder(engine, i + 1)}`;
+    })
+    .join(" AND ");
+  const sql = `DELETE FROM ${qualified(engine, schema, table)} WHERE ${whereClause}`;
   return { sql, params };
 }
 

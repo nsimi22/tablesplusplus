@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ChevronLeft, ChevronRight, RotateCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, RotateCw, Trash2, Undo2, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -9,6 +9,8 @@ import { cn } from "@/lib/utils";
 import { errorMessage, type CellValue, type ColumnMeta, type ConnectionConfig } from "@/lib/types";
 import { useSchema, useTableData } from "@/features/workspace/hooks";
 import {
+  buildDelete,
+  buildInsert,
   buildSelect,
   buildUpdate,
   coerceCellInput,
@@ -32,9 +34,35 @@ import { GridCellView } from "./GridCellView";
 const PAGE_SIZE = 500;
 const ROW_HEIGHT = 28;
 const COL_WIDTH = 184;
+const GUTTER_WIDTH = 32;
 
 /** rowIndex → (colIndex → new value). */
 type Edits = Record<number, Record<number, CellValue>>;
+
+/** A draft row being inserted: a stable id + the cells the user has filled (colIndex → value).
+ *  Unset columns are omitted from the INSERT so the database applies its defaults. */
+interface InsertRow {
+  id: number;
+  cells: Record<number, CellValue>;
+}
+
+/** A typed empty value for a sampled column kind, so draft-row input coerces like the column. */
+function seedForKind(kind: CellValue["kind"] | undefined): CellValue {
+  switch (kind) {
+    case "int":
+      return { kind: "int", value: 0 };
+    case "float":
+      return { kind: "float", value: 0 };
+    case "decimal":
+      return { kind: "decimal", value: "" };
+    case "bool":
+      return { kind: "bool", value: false };
+    case "dateTime":
+      return { kind: "dateTime", value: "" };
+    default:
+      return { kind: "text", value: "" };
+  }
+}
 
 export function DataGrid({
   connection,
@@ -49,6 +77,9 @@ export function DataGrid({
   const [filter, setFilter] = useState<QuickFilter | null>(null);
   const [draftFilter, setDraftFilter] = useState<QuickFilter>({ column: "", op: "=", value: "" });
   const [edits, setEdits] = useState<Edits>({});
+  const [deletes, setDeletes] = useState<Set<number>>(new Set());
+  const [inserts, setInserts] = useState<InsertRow[]>([]);
+  const insertIdRef = useRef(0);
   const [commitError, setCommitError] = useState<string | null>(null);
   const [exportNote, setExportNote] = useState<string | null>(null);
 
@@ -72,11 +103,21 @@ export function DataGrid({
   const columns = useMemo(() => query.data?.columns ?? [], [query.data]);
   const rows = useMemo(() => query.data?.rows ?? [], [query.data]);
 
-  // Row indices change when the page/filter/table changes — drop pending edits.
+  // Row indices change when the page/filter/table changes — drop all pending changes.
   useEffect(() => {
     setEdits({});
+    setDeletes(new Set());
+    setInserts([]);
     setCommitError(null);
   }, [page, filter, schema, table, connection.id]);
+
+  // Sample each column's value kind from the loaded page so draft-row input coerces correctly
+  // (mirrors the quick-filter approach). Columns with no sampled value fall back to text.
+  const columnKinds = useMemo(
+    () =>
+      columns.map((_, i) => rows.find((r) => r[i] && r[i].kind !== "null")?.[i]?.kind),
+    [columns, rows],
+  );
 
   // Default the filter column to the first column once data arrives.
   useEffect(() => {
@@ -86,7 +127,12 @@ export function DataGrid({
   }, [columns, draftFilter.column]);
 
   const editCount = Object.keys(edits).length;
-  const canCommit = pkColumns.length > 0 && editCount > 0;
+  const deleteCount = deletes.size;
+  const insertCount = inserts.length;
+  const pendingCount = editCount + deleteCount + insertCount;
+  // Updates and deletes target existing rows by primary key; inserts don't need one.
+  const needsPrimaryKey = editCount > 0 || deleteCount > 0;
+  const canCommit = pendingCount > 0 && (!needsPrimaryKey || pkColumns.length > 0);
 
   const setCellEdit = (rowIndex: number, colIndex: number, raw: string) => {
     const original = rows[rowIndex]?.[colIndex];
@@ -99,33 +145,91 @@ export function DataGrid({
     });
   };
 
+  const toggleDelete = (rowIndex: number) => {
+    setCommitError(null);
+    setDeletes((prev) => {
+      const next = new Set(prev);
+      if (next.has(rowIndex)) next.delete(rowIndex);
+      else next.add(rowIndex);
+      return next;
+    });
+  };
+
+  const addInsertRow = () => {
+    setCommitError(null);
+    // Advance the ref outside the updater — updaters can run twice under Strict/concurrent mode.
+    const id = insertIdRef.current++;
+    setInserts((prev) => [...prev, { id, cells: {} }]);
+  };
+
+  const discardInsert = (id: number) => {
+    setInserts((prev) => prev.filter((r) => r.id !== id));
+  };
+
+  const setInsertCell = (id: number, colIndex: number, raw: string) => {
+    const next = coerceCellInput(seedForKind(columnKinds[colIndex]), raw);
+    setInserts((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, cells: { ...r.cells, [colIndex]: next } } : r)),
+    );
+  };
+
   const discard = () => {
     setEdits({});
+    setDeletes(new Set());
+    setInserts([]);
     setCommitError(null);
   };
 
+  const pkWhere = (rowIndex: number): ColumnValue[] =>
+    pkColumns.map((pk) => {
+      const colIndex = columns.findIndex((c) => c.name === pk);
+      return { column: pk, value: rows[rowIndex][colIndex] };
+    });
+
+  // Apply pending deletes, then updates, then inserts. Each statement is removed from its pending
+  // set only after it succeeds, so a mid-batch failure leaves the rest pending without re-running
+  // (re-inserting) applied changes when the user retries.
   const commit = async () => {
     setCommitError(null);
-    // Drop each row from the pending set only after it commits, so a mid-batch failure
-    // doesn't re-run already-applied updates when the user retries.
-    const remaining: Edits = { ...edits };
+    const remainingEdits: Edits = { ...edits };
+    const remainingDeletes = new Set(deletes);
+    let remainingInserts = [...inserts];
     try {
+      // 1. Deletes — by primary key; a PK match must touch at most one row.
+      for (const rowIndex of deletes) {
+        const { sql, params } = buildDelete({
+          engine: connection.engine,
+          schema,
+          table,
+          where: pkWhere(rowIndex),
+        });
+        const res = await exec.mutateAsync({ sql, params });
+        if (res.rowsAffected !== null && res.rowsAffected > 1) {
+          throw new Error(
+            `This delete matched ${res.rowsAffected} rows but expected one; aborting to avoid unintended deletes.`,
+          );
+        }
+        remainingDeletes.delete(rowIndex);
+        delete remainingEdits[rowIndex]; // edits on a deleted row are moot
+      }
+
+      // 2. Updates — skip rows that were just deleted.
       for (const [rowKey, rowEdits] of Object.entries(edits)) {
         const rowIndex = Number(rowKey);
+        if (deletes.has(rowIndex)) {
+          delete remainingEdits[rowIndex];
+          continue;
+        }
         const set: ColumnValue[] = Object.entries(rowEdits).map(([colKey, value]) => ({
           column: columns[Number(colKey)].name,
           value,
         }));
-        const where: ColumnValue[] = pkColumns.map((pk) => {
-          const colIndex = columns.findIndex((c) => c.name === pk);
-          return { column: pk, value: rows[rowIndex][colIndex] };
-        });
         const { sql, params } = buildUpdate({
           engine: connection.engine,
           schema,
           table,
           set,
-          where,
+          where: pkWhere(rowIndex),
         });
         const res = await exec.mutateAsync({ sql, params });
         // Guard against silent data loss / over-broad writes. A PK update must touch one row.
@@ -144,12 +248,29 @@ export function DataGrid({
             );
           }
         }
-        delete remaining[rowIndex];
+        delete remainingEdits[rowIndex];
       }
+
+      // 3. Inserts — only the columns the user set; the rest take database defaults.
+      for (const insert of inserts) {
+        const values: ColumnValue[] = columns
+          .map((c, i) =>
+            insert.cells[i] !== undefined ? { column: c.name, value: insert.cells[i] } : null,
+          )
+          .filter((v): v is ColumnValue => v !== null);
+        const { sql, params } = buildInsert({ engine: connection.engine, schema, table, values });
+        await exec.mutateAsync({ sql, params });
+        remainingInserts = remainingInserts.filter((r) => r.id !== insert.id);
+      }
+
       setEdits({});
+      setDeletes(new Set());
+      setInserts([]);
       await query.refetch();
     } catch (err) {
-      setEdits(remaining);
+      setEdits(remainingEdits);
+      setDeletes(remainingDeletes);
+      setInserts(remainingInserts);
       setCommitError(errorMessage(err));
     }
   };
@@ -222,9 +343,14 @@ export function DataGrid({
         columns={columns.map((c) => ({ name: c.name, dataType: c.dataType }))}
         rows={rows}
         edits={edits}
+        deletes={deletes}
+        inserts={inserts}
         onEdit={setCellEdit}
+        onToggleDelete={toggleDelete}
+        onInsertEdit={setInsertCell}
+        onDiscardInsert={discardInsert}
         loading={query.isLoading}
-        empty={!query.isLoading && rows.length === 0}
+        empty={!query.isLoading && rows.length === 0 && inserts.length === 0}
       />
 
       <div className="flex items-center justify-between border-t border-border px-3 py-1.5 text-xs text-muted-foreground">
@@ -232,6 +358,16 @@ export function DataGrid({
           {exportNote ?? `${rows.length} rows${filter ? " (filtered)" : ""} · page ${page + 1}`}
         </span>
         <div className="flex items-center gap-1">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={addInsertRow}
+            disabled={columns.length === 0}
+            aria-label="Add row"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add row
+          </Button>
           <ExportMenu
             onExport={exportAll}
             onCopy={rows.length ? copyPage : undefined}
@@ -259,11 +395,13 @@ export function DataGrid({
         </div>
       </div>
 
-      {editCount > 0 ? (
+      {pendingCount > 0 ? (
         <CommitBar
           editCount={editCount}
+          insertCount={insertCount}
+          deleteCount={deleteCount}
           canCommit={canCommit}
-          noPrimaryKey={pkColumns.length === 0}
+          noPrimaryKey={needsPrimaryKey && pkColumns.length === 0}
           committing={exec.isPending}
           error={commitError}
           onDiscard={discard}
@@ -343,12 +481,29 @@ interface GridBodyProps {
   columns: { name: string; dataType: string }[];
   rows: CellValue[][];
   edits: Edits;
+  deletes: Set<number>;
+  inserts: InsertRow[];
   onEdit: (rowIndex: number, colIndex: number, raw: string) => void;
+  onToggleDelete: (rowIndex: number) => void;
+  onInsertEdit: (id: number, colIndex: number, raw: string) => void;
+  onDiscardInsert: (id: number) => void;
   loading: boolean;
   empty: boolean;
 }
 
-function GridBody({ columns, rows, edits, onEdit, loading, empty }: GridBodyProps) {
+function GridBody({
+  columns,
+  rows,
+  edits,
+  deletes,
+  inserts,
+  onEdit,
+  onToggleDelete,
+  onInsertEdit,
+  onDiscardInsert,
+  loading,
+  empty,
+}: GridBodyProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -357,7 +512,10 @@ function GridBody({ columns, rows, edits, onEdit, loading, empty }: GridBodyProp
     overscan: 14,
   });
 
-  const totalWidth = columns.length * COL_WIDTH;
+  const totalWidth = GUTTER_WIDTH + columns.length * COL_WIDTH;
+  // Draft insert rows render below the (virtualized) data rows, so extend the canvas height.
+  const dataHeight = virtualizer.getTotalSize();
+  const canvasHeight = dataHeight + inserts.length * ROW_HEIGHT;
 
   if (loading) {
     return (
@@ -381,6 +539,7 @@ function GridBody({ columns, rows, edits, onEdit, loading, empty }: GridBodyProp
         className="sticky top-0 z-10 flex border-b border-border bg-surface-raised"
         style={{ width: totalWidth }}
       >
+        <div className="shrink-0 border-r border-border" style={{ width: GUTTER_WIDTH }} />
         {columns.map((col) => (
           <div
             key={col.name}
@@ -393,32 +552,98 @@ function GridBody({ columns, rows, edits, onEdit, loading, empty }: GridBodyProp
         ))}
       </div>
 
-      <div style={{ height: virtualizer.getTotalSize(), width: totalWidth, position: "relative" }}>
+      <div style={{ height: canvasHeight, width: totalWidth, position: "relative" }}>
         {virtualizer.getVirtualItems().map((vRow) => {
           const rowIndex = vRow.index;
           const rowEdits = edits[rowIndex];
+          const deleted = deletes.has(rowIndex);
           return (
             <div
               key={rowIndex}
               className={cn(
                 "absolute left-0 flex border-b border-border/60",
-                rowEdits ? "bg-warning/5" : rowIndex % 2 ? "bg-surface/40" : "",
+                deleted
+                  ? "bg-destructive/10 text-muted-foreground line-through"
+                  : rowEdits
+                    ? "bg-warning/5"
+                    : rowIndex % 2
+                      ? "bg-surface/40"
+                      : "",
               )}
               style={{ top: vRow.start, height: ROW_HEIGHT, width: totalWidth }}
             >
+              <GutterButton
+                onClick={() => onToggleDelete(rowIndex)}
+                title={deleted ? "Restore row" : "Delete row"}
+                ariaLabel={deleted ? "Restore row" : "Delete row"}
+              >
+                {deleted ? (
+                  <Undo2 className="h-3.5 w-3.5" />
+                ) : (
+                  <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                )}
+              </GutterButton>
               {columns.map((_, colIndex) => (
                 <GridCellView
                   key={colIndex}
                   width={COL_WIDTH}
                   value={rows[rowIndex][colIndex]}
                   edited={rowEdits?.[colIndex]}
+                  disabled={deleted}
                   onCommit={(raw) => onEdit(rowIndex, colIndex, raw)}
                 />
               ))}
             </div>
           );
         })}
+
+        {inserts.map((insert, i) => (
+          <div
+            key={`insert-${insert.id}`}
+            className="absolute left-0 flex border-b border-border/60 bg-success/5"
+            style={{ top: dataHeight + i * ROW_HEIGHT, height: ROW_HEIGHT, width: totalWidth }}
+          >
+            <GutterButton
+              onClick={() => onDiscardInsert(insert.id)}
+              title="Discard new row"
+              ariaLabel="Discard new row"
+            >
+              <X className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+            </GutterButton>
+            {columns.map((_, colIndex) => (
+              <GridCellView
+                key={colIndex}
+                width={COL_WIDTH}
+                value={insert.cells[colIndex] ?? { kind: "text", value: "" }}
+                onCommit={(raw) => onInsertEdit(insert.id, colIndex, raw)}
+              />
+            ))}
+          </div>
+        ))}
       </div>
+    </div>
+  );
+}
+
+function GutterButton({
+  onClick,
+  title,
+  ariaLabel,
+  children,
+}: {
+  onClick: () => void;
+  title: string;
+  ariaLabel: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="flex shrink-0 items-center justify-center border-r border-border/60"
+      style={{ width: GUTTER_WIDTH }}
+    >
+      <button type="button" onClick={onClick} title={title} aria-label={ariaLabel} className="p-1">
+        {children}
+      </button>
     </div>
   );
 }

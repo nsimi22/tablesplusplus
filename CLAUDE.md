@@ -395,6 +395,16 @@ npm run typecheck
   is unsupported (errors clearly), and over a tunnel the DB sees a `127.0.0.1` peer, so TLS
   `verifyCa`/`verifyFull` will fail hostname checks — pair a tunnel with a non-verifying SSL mode.
   Compile- and clippy-verified; not runtime-tested (no live bastion in CI/sandbox).
+- [2026-06-07] Grid CRUD — The data grid now supports **insert** and **delete** alongside inline
+  edits, all staged into the same batch `CommitBar` (counts shown per kind: edited/new/to-delete).
+  A leading gutter column holds a delete/restore toggle per existing row (deleted rows render
+  struck-through, read-only); an "Add row" button appends draft rows (rendered below the
+  virtualized data rows) whose cells coerce via the **sampled column kind** (same approach as the
+  quick filter — unset cells are omitted from the INSERT so DB defaults/serials apply). Commit
+  order is deletes → updates → inserts; each statement is dropped from its pending set only after
+  it succeeds, so a mid-batch failure never re-inserts/re-applies on retry. Inserts don't require a
+  PK; edits/deletes still do (the no-PK warning only fires when those are pending). Builders live
+  in `sql.ts` (`buildInsert`/`buildDelete`, parameterized like `buildUpdate`).
 - [2026-06-07] Export — Result sets export to **CSV/JSON** and copy to the clipboard as **TSV**
   (`src/lib/export.ts` serializers; `src/features/export/`). Two scopes: the **grid** exports the
   whole *filtered* table by streaming the unpaged generated `SELECT` via `execute_query_stream`

@@ -8,18 +8,26 @@ interface GridCellViewProps {
   value: CellValue;
   /** The locally-edited value, if this cell has been changed. */
   edited?: CellValue;
+  /** When true, the cell is read-only (e.g. a row marked for deletion). */
+  disabled?: boolean;
   onCommit: (raw: string) => void;
 }
 
 /** A single grid cell. Double-click to edit scalar values; Enter commits, Esc cancels. */
-export function GridCellView({ width, value, edited, onCommit }: GridCellViewProps) {
+export function GridCellView({ width, value, edited, disabled, onCommit }: GridCellViewProps) {
   const [editing, setEditing] = useState(false);
+
+  // Close an open editor if the row becomes read-only (e.g. marked for deletion mid-edit).
+  useEffect(() => {
+    if (disabled) setEditing(false);
+  }, [disabled]);
+
   const display = edited ?? value;
   const isNull = display.kind === "null";
   const text = displayCell(display);
 
   const startEdit = () => {
-    if (isEditable(value)) setEditing(true);
+    if (!disabled && isEditable(value)) setEditing(true);
   };
 
   return (
