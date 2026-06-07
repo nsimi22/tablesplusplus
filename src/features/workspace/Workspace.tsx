@@ -36,12 +36,19 @@ export function Workspace() {
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const secondaryTab = tabs.find((t) => t.id === secondaryTabId);
   const soloTab = activeTab ?? secondaryTab;
+  const activeConn = connFor(activeConnectionId);
 
   return (
     <div className="flex h-full flex-col">
       <header className="flex items-center gap-2 border-b border-border bg-surface px-3 py-2">
         <Database className="h-4 w-4 text-primary" />
         <ConnectionSwitcher />
+        {activeConn ? (
+          <span className="hidden truncate text-xs text-muted-foreground md:inline">
+            {activeConn.engine === "postgres" ? "PostgreSQL" : "MySQL"} · {activeConn.host}:
+            {activeConn.port}/{activeConn.database}
+          </span>
+        ) : null}
         <div className="ml-auto flex items-center gap-1">
           <ThemeToggle />
           <Button size="sm" variant="ghost" onClick={openQueryTab}>
