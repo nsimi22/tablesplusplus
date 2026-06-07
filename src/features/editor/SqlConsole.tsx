@@ -8,10 +8,12 @@ import { Spinner } from "@/components/ui/Spinner";
 import { errorMessage, type ConnectionConfig, type QueryResult, type Schema } from "@/lib/types";
 import { useWorkspaceStore } from "@/store/useWorkspaceStore";
 import { useThemeStore } from "@/store/useThemeStore";
+import { useHistoryStore } from "@/store/useHistoryStore";
 import { useSchema } from "@/features/workspace/hooks";
 import * as ipc from "@/lib/ipc";
 import { useAiGenerate } from "@/features/ai/useAi";
 import { AiSettingsDialog } from "@/features/ai/AiSettingsDialog";
+import { HistoryPanel } from "@/features/history/HistoryPanel";
 import { explainPrompts, fixPrompts, stripSqlFences, textToSqlPrompts } from "@/features/ai/prompts";
 import { ResultView } from "./ResultView";
 
@@ -123,6 +125,7 @@ export function SqlConsole({
   }, [monaco, monacoTheme]);
 
   const ai = useAiGenerate();
+  const addHistory = useHistoryStore((s) => s.add);
   const editorRef = useRef<CodeEditor | null>(null);
   const runRef = useRef<() => void>(() => {});
   // Guards async state updates if the tab is closed mid-stream.
@@ -269,18 +272,41 @@ export function SqlConsole({
           didTruncate = chunk.truncated;
         }
       });
+      // Record before the mounted guard so history is captured even if the tab closed mid-run.
+      addHistory({
+        connectionId: connection.id,
+        sql: trimmed,
+        status: "ok",
+        rowCount: columns.length ? rows.length : (rowsAffected ?? 0),
+        elapsedMs,
+      });
       if (!mountedRef.current) return;
       setResult({ columns, rows, rowsAffected, elapsedMs });
       setTruncated(didTruncate);
     } catch (err) {
+      const message = errorMessage(err);
+      addHistory({ connectionId: connection.id, sql: trimmed, status: "error", error: message });
       if (!mountedRef.current) return;
       // Surface the error; keep any rows already streamed so partial output is visible.
       setResult(rows.length || columns.length ? { columns, rows, rowsAffected: null, elapsedMs } : null);
-      setError(errorMessage(err));
+      setError(message);
     } finally {
       if (mountedRef.current) setStreaming(false);
     }
-  }, [currentSql, streaming, connection.id]);
+  }, [currentSql, streaming, connection.id, addHistory]);
+
+  /** Load a past query into the editor (preserves undo; focuses the editor). */
+  const loadIntoEditor = useCallback(
+    (text: string) => {
+      setTabSql(tabId, text);
+      const ed = editorRef.current;
+      if (ed) {
+        ed.setValue(text);
+        ed.focus();
+      }
+    },
+    [tabId, setTabSql],
+  );
 
   useEffect(() => {
     runRef.current = run;
@@ -324,6 +350,7 @@ export function SqlConsole({
           Fix
         </Button>
         <div className="ml-auto flex items-center gap-2">
+          <HistoryPanel onPick={loadIntoEditor} />
           <Button
             size="icon"
             variant="ghost"
