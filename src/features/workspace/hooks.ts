@@ -1,16 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import * as ipc from "@/lib/ipc";
 import type { CellValue, ConnectionConfig, QueryResult, Schema } from "@/lib/types";
-import { useConnections } from "@/features/connections/useConnections";
-import { useWorkspaceStore } from "@/store/useWorkspaceStore";
 import { buildSelect, type QuickFilter, type SortSpec } from "./sql";
-
-/** The connection currently open in the workspace. */
-export function useActiveConnection(): ConnectionConfig | undefined {
-  const activeId = useWorkspaceStore((s) => s.activeConnectionId);
-  const { data } = useConnections();
-  return data?.find((c) => c.id === activeId);
-}
 
 export function useSchema(connectionId: string | null) {
   return useQuery<Schema>({
