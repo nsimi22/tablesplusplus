@@ -395,6 +395,13 @@ npm run typecheck
   is unsupported (errors clearly), and over a tunnel the DB sees a `127.0.0.1` peer, so TLS
   `verifyCa`/`verifyFull` will fail hostname checks — pair a tunnel with a non-verifying SSL mode.
   Compile- and clippy-verified; not runtime-tested (no live bastion in CI/sandbox).
+- [2026-06-07] Cell viewer — A read-only **full-cell detail dialog** (`src/features/cell/
+  CellDetailDialog.tsx`) shows a cell's complete value: pretty-printed JSON, full text, or binary
+  as **Base64 ⇄ Hex** (with byte count + truncation note), plus a Copy button (clipboard plugin).
+  Opened from a hover **⤢** button on each grid/console cell, and on double-click of non-editable
+  cells (json/bytes) in the grid. Closes the loop on the backend's 64 KB display truncation —
+  oversized blobs are still capped at `MAX_BYTES` upstream, so the viewer notes "(truncated for
+  display)". No backend changes.
 - [2026-06-07] Column sort — Clicking a grid header sorts **server-side** (`ORDER BY` in
   `buildSelect`), cycling asc → desc → unsorted, with a header chevron indicator. Sort threads
   through `useTableData` (in the query key) and resets to page 0; it's also applied to the

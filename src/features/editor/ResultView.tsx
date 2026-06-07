@@ -1,9 +1,10 @@
 import { useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2, Maximize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { errorMessage, type QueryResult } from "@/lib/types";
 import { displayCell } from "@/features/grid/cell";
+import { CellDetailDialog, type CellDetail } from "@/features/cell/CellDetailDialog";
 import { ExportMenu } from "@/features/export/ExportMenu";
 import {
   copyRowsToClipboard,
@@ -67,6 +68,7 @@ export function ResultView({ result, error, streaming, streamedRows, truncated }
 function ResultTable({ result, truncated }: { result: QueryResult; truncated?: boolean }) {
   const parentRef = useRef<HTMLDivElement>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [detail, setDetail] = useState<CellDetail | null>(null);
 
   // Export/copy the in-memory result (what's shown). Re-running the console SQL would be unsafe
   // (it may be DML), so export serializes the rows already streamed into the view.
@@ -131,11 +133,14 @@ function ResultTable({ result, truncated }: { result: QueryResult; truncated?: b
             >
               {result.rows[vRow.index].map((cell, colIndex) => {
                 const text = displayCell(cell);
+                const open = () =>
+                  setDetail({ columnName: result.columns[colIndex]?.name ?? "", cell });
                 return (
                   <div
                     key={colIndex}
                     style={{ width: COL_WIDTH }}
-                    className="flex h-full shrink-0 items-center border-r border-border/60 px-2 text-sm"
+                    onDoubleClick={open}
+                    className="group/cell relative flex h-full shrink-0 items-center border-r border-border/60 px-2 text-sm"
                   >
                     <span
                       className={cn(
@@ -146,6 +151,15 @@ function ResultTable({ result, truncated }: { result: QueryResult; truncated?: b
                     >
                       {text}
                     </span>
+                    <button
+                      type="button"
+                      onClick={open}
+                      aria-label="View full value"
+                      title="View full value"
+                      className="absolute right-1 top-1/2 hidden -translate-y-1/2 rounded bg-surface-raised/90 p-0.5 text-muted-foreground hover:text-foreground group-hover/cell:block"
+                    >
+                      <Maximize2 className="h-3 w-3" />
+                    </button>
                   </div>
                 );
               })}
@@ -171,6 +185,8 @@ function ResultTable({ result, truncated }: { result: QueryResult; truncated?: b
           scopeHint={truncated ? "Exports the rows shown (truncated set)." : undefined}
         />
       </div>
+
+      <CellDetailDialog detail={detail} onClose={() => setDetail(null)} />
     </div>
   );
 }
