@@ -395,6 +395,12 @@ npm run typecheck
   is unsupported (errors clearly), and over a tunnel the DB sees a `127.0.0.1` peer, so TLS
   `verifyCa`/`verifyFull` will fail hostname checks — pair a tunnel with a non-verifying SSL mode.
   Compile- and clippy-verified; not runtime-tested (no live bastion in CI/sandbox).
+- [2026-06-07] Column sort — Clicking a grid header sorts **server-side** (`ORDER BY` in
+  `buildSelect`), cycling asc → desc → unsorted, with a header chevron indicator. Sort threads
+  through `useTableData` (in the query key) and resets to page 0; it's also applied to the
+  full-table **export**. Sort is dropped when switching tables, and changing it clears pending
+  edits/inserts/deletes (row indices move). `dir` is a constrained union (never interpolated user
+  text); the column is a quoted identifier.
 - [2026-06-07] Query history — Every SQL-console run is recorded to a **local, capped** history
   (`useHistoryStore`, last 200, persisted to `localStorage` manually like `useThemeStore` — not the
   Rust config dir; it's not consumed externally). Entries hold `{connectionId, sql, status,
