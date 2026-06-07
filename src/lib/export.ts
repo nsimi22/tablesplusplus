@@ -52,11 +52,15 @@ function csvField(value: string): string {
   return CSV_NEEDS_QUOTE.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 
+// Index by the header columns (not the row) so a short/ragged row can't shift columns or read
+// past the end — a missing cell renders as empty/null rather than crashing or misaligning.
+const NULL_CELL: CellValue = { kind: "null" };
+
 /** Serialize rows to RFC-4180 CSV (CRLF line endings, header row from column names). */
 export function rowsToCsv(columns: ColumnMeta[], rows: CellValue[][]): string {
   const lines = [columns.map((c) => csvField(c.name)).join(",")];
   for (const row of rows) {
-    lines.push(row.map((cell) => csvField(cellToText(cell))).join(","));
+    lines.push(columns.map((_, i) => csvField(cellToText(row[i] ?? NULL_CELL))).join(","));
   }
   return lines.join("\r\n");
 }
@@ -66,7 +70,7 @@ export function rowsToJson(columns: ColumnMeta[], rows: CellValue[][]): string {
   const objects = rows.map((row) => {
     const obj: Record<string, unknown> = {};
     columns.forEach((col, i) => {
-      obj[col.name] = cellToJson(row[i]);
+      obj[col.name] = cellToJson(row[i] ?? NULL_CELL);
     });
     return obj;
   });
@@ -82,7 +86,7 @@ function tsvField(value: string): string {
 export function rowsToTsv(columns: ColumnMeta[], rows: CellValue[][]): string {
   const lines = [columns.map((c) => tsvField(c.name)).join("\t")];
   for (const row of rows) {
-    lines.push(row.map((cell) => tsvField(cellToText(cell))).join("\t"));
+    lines.push(columns.map((_, i) => tsvField(cellToText(row[i] ?? NULL_CELL))).join("\t"));
   }
   return lines.join("\n");
 }

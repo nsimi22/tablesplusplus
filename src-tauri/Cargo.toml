@@ -48,9 +48,11 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 
-# Data export — native save dialog + clipboard.
+# Data export — native save dialog + clipboard + filesystem (dialog grants the picked path to
+# the fs scope at runtime, so no arbitrary-write command is exposed to the webview).
 tauri-plugin-dialog = "2"
 tauri-plugin-clipboard-manager = "2"
+tauri-plugin-fs = "2"
 
 # SSH tunneling (optional per-connection local port forward). Pure-Rust, async.
 russh = "0.45"

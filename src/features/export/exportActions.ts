@@ -1,6 +1,6 @@
 import { save } from "@tauri-apps/plugin-dialog";
+import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import * as ipc from "@/lib/ipc";
 import type { CellValue, ColumnMeta } from "@/lib/types";
 import { rowsToCsv, rowsToJson, rowsToTsv } from "@/lib/export";
 
@@ -24,7 +24,9 @@ export async function exportRowsToFile(args: {
   });
   if (!path) return null;
   const contents = format === "csv" ? rowsToCsv(columns, rows) : rowsToJson(columns, rows);
-  await ipc.writeTextFile(path, contents);
+  // The dialog's save() grants this exact path to the fs scope, so writeTextFile can write it
+  // without broad filesystem permissions (Tauri v2). No arbitrary-write command is exposed.
+  await writeTextFile(path, contents);
   return path;
 }
 
