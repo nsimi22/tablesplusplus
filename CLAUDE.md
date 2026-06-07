@@ -395,6 +395,14 @@ npm run typecheck
   is unsupported (errors clearly), and over a tunnel the DB sees a `127.0.0.1` peer, so TLS
   `verifyCa`/`verifyFull` will fail hostname checks — pair a tunnel with a non-verifying SSL mode.
   Compile- and clippy-verified; not runtime-tested (no live bastion in CI/sandbox).
+- [2026-06-07] Query history — Every SQL-console run is recorded to a **local, capped** history
+  (`useHistoryStore`, last 200, persisted to `localStorage` manually like `useThemeStore` — not the
+  Rust config dir; it's not consumed externally). Entries hold `{connectionId, sql, status,
+  rowCount, elapsedMs, error, at}` and are written in `SqlConsole.run()` for both success and
+  error *before* the mounted guard (so a run still records if the tab closes mid-stream). The
+  `HistoryPanel` (toolbar dropdown, `src/features/history/`) is searchable; clicking an entry
+  **loads** its SQL into the editor (doesn't auto-run — avoids re-executing DML). No backend/IPC
+  changes.
 - [2026-06-07] Grid CRUD — The data grid now supports **insert** and **delete** alongside inline
   edits, all staged into the same batch `CommitBar` (counts shown per kind: edited/new/to-delete).
   A leading gutter column holds a delete/restore toggle per existing row (deleted rows render
