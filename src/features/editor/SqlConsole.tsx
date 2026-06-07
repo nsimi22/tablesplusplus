@@ -20,10 +20,12 @@ import { ResultView } from "./ResultView";
 type MonacoApi = Parameters<OnMount>[1];
 type CodeEditor = Parameters<OnMount>[0];
 
-// Monaco is a global singleton; register the schema-aware provider once and let it read the
-// active connection's schema from a module-level ref (all query tabs share one connection).
+// Monaco is a global singleton; register the schema-aware completion provider once. Because
+// multiple consoles (and multiple connections) can be open at once, the provider must use the
+// schema of the *editor being completed*, so we key each editor model's schema by its model URI
+// rather than a single shared "active" schema.
 let providerRegistered = false;
-let activeSchema: Schema | undefined;
+const modelSchemas = new Map<string, Schema>();
 
 const DARK_THEME = "tablesplusplus-dark";
 const LIGHT_THEME = "tablesplusplus-light";
@@ -77,7 +79,9 @@ function registerProvider(monaco: MonacoApi) {
         startColumn: word.startColumn,
         endColumn: word.endColumn,
       };
-      const tables = [...(activeSchema?.tables ?? []), ...(activeSchema?.views ?? [])];
+      // Use the schema of the connection backing *this* editor (model), not a global one.
+      const schema = modelSchemas.get(model.uri.toString());
+      const tables = [...(schema?.tables ?? []), ...(schema?.views ?? [])];
       const suggestions: import("monaco-editor").languages.CompletionItem[] = [];
       for (const t of tables) {
         suggestions.push({
@@ -146,9 +150,22 @@ export function SqlConsole({
   const [aiNote, setAiNote] = useState<string | null>(null);
   const [showAiSettings, setShowAiSettings] = useState(false);
 
+  // URI of this editor's Monaco model, set on mount; used to scope autocomplete to this
+  // connection's schema (the provider is a global singleton shared by all editors).
+  const modelUriRef = useRef<string | null>(null);
+
+  // Keep this model's schema registered for autocomplete; clean it up when the tab unmounts.
   useEffect(() => {
-    activeSchema = schema;
+    const uri = modelUriRef.current;
+    if (!uri) return;
+    if (schema) modelSchemas.set(uri, schema);
+    else modelSchemas.delete(uri);
   }, [schema]);
+  useEffect(() => {
+    return () => {
+      if (modelUriRef.current) modelSchemas.delete(modelUriRef.current);
+    };
+  }, []);
 
   /** The selected SQL if any, else the full editor contents. */
   const currentSql = useCallback((): string => {
@@ -319,6 +336,10 @@ export function SqlConsole({
 
   const onMount: OnMount = (ed, monaco) => {
     editorRef.current = ed;
+    // Register this editor's model schema for autocomplete (the schema effect keeps it current).
+    const uri = ed.getModel()?.uri.toString() ?? null;
+    modelUriRef.current = uri;
+    if (uri && schema) modelSchemas.set(uri, schema);
     ensureThemes(monaco);
     monaco.editor.setTheme(monacoTheme);
     registerProvider(monaco);

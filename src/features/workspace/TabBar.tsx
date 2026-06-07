@@ -1,15 +1,24 @@
 import { Columns2, Plus, Table2, TerminalSquare, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore } from "@/store/useWorkspaceStore";
+import { useConnections } from "@/features/connections/useConnections";
+import { CONNECTION_COLOR_CLASS } from "@/features/connections/connectionDefaults";
 
 export function TabBar() {
   const tabs = useWorkspaceStore((s) => s.tabs);
   const activeTabId = useWorkspaceStore((s) => s.activeTabId);
   const secondaryTabId = useWorkspaceStore((s) => s.secondaryTabId);
+  const openConnectionIds = useWorkspaceStore((s) => s.openConnectionIds);
   const setActiveTab = useWorkspaceStore((s) => s.setActiveTab);
   const toggleSecondaryTab = useWorkspaceStore((s) => s.toggleSecondaryTab);
   const closeTab = useWorkspaceStore((s) => s.closeTab);
   const openQueryTab = useWorkspaceStore((s) => s.openQueryTab);
+
+  const { data: connections } = useConnections();
+  // Only tag tabs by connection color once more than one connection is open (otherwise noise).
+  const showConnDot = openConnectionIds.length > 1;
+  const colorOf = (connectionId: string) =>
+    CONNECTION_COLOR_CLASS[connections?.find((c) => c.id === connectionId)?.color ?? "primary"];
 
   return (
     <div className="flex items-stretch border-b border-border bg-surface">
@@ -27,6 +36,12 @@ export function TabBar() {
                   : "text-muted-foreground hover:bg-accent/50",
               )}
             >
+              {showConnDot ? (
+                <span
+                  className={cn("h-2 w-2 shrink-0 rounded-full", colorOf(tab.connectionId))}
+                  title="Connection"
+                />
+              ) : null}
               {tab.kind === "table" ? (
                 <Table2 className="h-3.5 w-3.5 shrink-0" />
               ) : (

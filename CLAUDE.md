@@ -395,6 +395,18 @@ npm run typecheck
   is unsupported (errors clearly), and over a tunnel the DB sees a `127.0.0.1` peer, so TLS
   `verifyCa`/`verifyFull` will fail hostname checks — pair a tunnel with a non-verifying SSL mode.
   Compile- and clippy-verified; not runtime-tested (no live bastion in CI/sandbox).
+- [2026-06-07] Multi-connection — Several connections can be **open at once** (backend already
+  supported it — `PoolRegistry` is a per-id `DashMap`). `useWorkspaceStore` now holds
+  `openConnectionIds` + an `activeConnectionId` (the focused connection that drives the sidebar and
+  new-tab target) + a `hubOpen` flag; **every tab carries its own `connectionId`**. The header
+  `ConnectionSwitcher` switches/disconnects connections and reaches the hub ("Open another…");
+  `App` shows the hub when no connection is open or `hubOpen`. The existing **max-2 split** now
+  allows the two panes to be **different connections** (compare two DBs side by side); each pane
+  renders with its tab's own connection (`PaneContent`), tabs are color-tagged by connection (when
+  >1 open), and the sidebar follows the active pane (follow-focus). Autocomplete was a landmine: the
+  `SqlConsole` completion provider stored schema in a module-global; it now keys schema **per
+  Monaco model URI** (`modelSchemas`) so each editor completes against its own connection. Disconnect
+  is per-connection (`closeConnection` drops that connection's tabs and repicks the active one).
 - [2026-06-07] Cell viewer — A read-only **full-cell detail dialog** (`src/features/cell/
   CellDetailDialog.tsx`) shows a cell's complete value: pretty-printed JSON, full text, or binary
   as **Base64 ⇄ Hex** (with byte count + truncation note), plus a Copy button (clipboard plugin).
