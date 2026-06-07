@@ -12,6 +12,7 @@ import type {
   ConnectionConfig,
   ConnectionInput,
   QueryResult,
+  SavedQuery,
   Schema,
   StreamChunk,
 } from "@/lib/types";
@@ -99,6 +100,13 @@ export function executeQueryStream(
     params: args.params ?? [],
     onEvent: channel,
   });
+}
+
+// ---- Saved Queries ----
+
+/** List Saved Queries (query-mcp snippets, read-only). Absent store → empty list. */
+export function listSavedQueries(): Promise<SavedQuery[]> {
+  return invoke<SavedQuery[]>("list_saved_queries");
 }
 
 // ---- AI assistant ----

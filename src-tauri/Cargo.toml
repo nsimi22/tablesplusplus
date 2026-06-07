@@ -58,6 +58,10 @@ tauri-plugin-fs = "2"
 russh = "0.45"
 russh-keys = "0.45"
 
+# Saved Queries — read-only view over query-mcp's snippet store (~/.query-mcp/store.db).
+# Bundled so no system SQLite is assumed; small, and the only SQLite consumer in the app.
+rusqlite = { version = "0.32", features = ["bundled"] }
+
 [features]
 # Default Tauri custom-protocol used in release builds.
 custom-protocol = ["tauri/custom-protocol"]

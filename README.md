@@ -47,6 +47,9 @@ optional, bring-your-own-key AI assistant for SQL.
 - **AI SQL assistant (optional)** — bring your own **Anthropic / OpenAI / OpenRouter** key to
   **generate** SQL from natural language, **explain** a query, or **fix** a failed one — all
   schema-aware.
+- **Saved Queries** — queries saved from Claude sessions via
+  [query-mcp](https://github.com/completesolar/query-mcp) (`save_snippet`) appear in the SQL
+  console's Saved Queries menu; one click inserts them at the cursor.
 - **Dark & light themes** — a refined low-contrast dark mode by default, with a one-click toggle.
 - **Native packaging + auto-update** — ships as a per-platform installer and updates itself in
   place via Tauri's signed updater.

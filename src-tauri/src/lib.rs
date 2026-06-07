@@ -6,6 +6,7 @@ mod commands;
 mod config;
 mod db;
 mod error;
+mod saved_queries;
 mod secrets;
 mod ssh;
 
@@ -58,6 +59,7 @@ pub fn run() {
             commands::get_ai_settings,
             commands::save_ai_settings,
             commands::ai_generate,
+            commands::list_saved_queries,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Tables++ application");

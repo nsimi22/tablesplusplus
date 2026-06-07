@@ -4,11 +4,13 @@
 mod ai;
 mod connections;
 mod query;
+mod saved_queries;
 mod session;
 
 pub use ai::*;
 pub use connections::*;
 pub use query::*;
+pub use saved_queries::*;
 pub use session::*;
 
 use std::sync::Arc;

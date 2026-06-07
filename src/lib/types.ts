@@ -139,6 +139,14 @@ export interface Schema {
   routines: RoutineInfo[];
 }
 
+/** A Saved Query — a query-mcp snippet surfaced read-only (mirrors Rust `SavedQuery`). */
+export interface SavedQuery {
+  name: string;
+  sql: string;
+  description: string | null;
+  updatedAt: string;
+}
+
 /** Structured error payload mirroring Rust `AppError` (docs/architecture.md §9). */
 export type AppErrorKind =
   | "connection"
