@@ -1,6 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ChevronLeft, ChevronRight, Plus, RotateCw, Trash2, Undo2, X } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  ChevronsUpDown,
+  Plus,
+  RotateCw,
+  Trash2,
+  Undo2,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -18,6 +29,7 @@ import {
   type ColumnValue,
   type FilterOp,
   type QuickFilter,
+  type SortSpec,
 } from "@/features/workspace/sql";
 import { useExecuteSql } from "@/features/workspace/hooks";
 import { executeQueryStream } from "@/lib/ipc";
@@ -75,6 +87,7 @@ export function DataGrid({
 }) {
   const [page, setPage] = useState(0);
   const [filter, setFilter] = useState<QuickFilter | null>(null);
+  const [sort, setSort] = useState<SortSpec | null>(null);
   const [draftFilter, setDraftFilter] = useState<QuickFilter>({ column: "", op: "=", value: "" });
   const [edits, setEdits] = useState<Edits>({});
   const [deletes, setDeletes] = useState<Set<number>>(new Set());
@@ -82,6 +95,23 @@ export function DataGrid({
   const insertIdRef = useRef(0);
   const [commitError, setCommitError] = useState<string | null>(null);
   const [exportNote, setExportNote] = useState<string | null>(null);
+
+  // Reset table-scoped state *during render* when the table/connection changes, so the very first
+  // render of a new table can't query it with the previous table's page/filter/sort (which could
+  // reference a column that doesn't exist). This is the React "reset state on prop change" pattern;
+  // it also makes the grid correct even if the parent stops keying it by tab.
+  const tableKey = `${connection.id}/${schema}/${table}`;
+  const [prevTableKey, setPrevTableKey] = useState(tableKey);
+  if (tableKey !== prevTableKey) {
+    setPrevTableKey(tableKey);
+    setPage(0);
+    setFilter(null);
+    setSort(null);
+    setEdits({});
+    setDeletes(new Set());
+    setInserts([]);
+    setCommitError(null);
+  }
 
   const { data: schemaData } = useSchema(connection.id);
   const tableInfo = useMemo(
@@ -96,20 +126,21 @@ export function DataGrid({
     [tableInfo],
   );
 
-  const query = useTableData({ connection, schema, table, page, pageSize: PAGE_SIZE, filter });
+  const query = useTableData({ connection, schema, table, page, pageSize: PAGE_SIZE, filter, sort });
   const exec = useExecuteSql(connection.id);
 
   // Memoized so the references stay stable across renders (avoids effect churn).
   const columns = useMemo(() => query.data?.columns ?? [], [query.data]);
   const rows = useMemo(() => query.data?.rows ?? [], [query.data]);
 
-  // Row indices change when the page/filter/table changes — drop all pending changes.
+  // Row indices change when the page/filter/sort changes within a table — drop pending edits.
+  // (Table/connection changes are handled by the render-phase reset above.)
   useEffect(() => {
     setEdits({});
     setDeletes(new Set());
     setInserts([]);
     setCommitError(null);
-  }, [page, filter, schema, table, connection.id]);
+  }, [page, filter, sort]);
 
   // Sample each column's value kind from the loaded page so draft-row input coerces correctly
   // (mirrors the quick-filter approach). Columns with no sampled value fall back to text.
@@ -133,6 +164,16 @@ export function DataGrid({
   // Updates and deletes target existing rows by primary key; inserts don't need one.
   const needsPrimaryKey = editCount > 0 || deleteCount > 0;
   const canCommit = pendingCount > 0 && (!needsPrimaryKey || pkColumns.length > 0);
+
+  // Cycle a column through asc → desc → unsorted; sorting resets to the first page.
+  const onSort = (column: string) => {
+    setSort((prev) => {
+      if (!prev || prev.column !== column) return { column, dir: "asc" };
+      if (prev.dir === "asc") return { column, dir: "desc" };
+      return null;
+    });
+    setPage(0);
+  };
 
   const setCellEdit = (rowIndex: number, colIndex: number, raw: string) => {
     const original = rows[rowIndex]?.[colIndex];
@@ -283,7 +324,7 @@ export function DataGrid({
     try {
       const path = await chooseExportPath(format, table);
       if (!path) return;
-      const { sql, params } = buildSelect({ engine: connection.engine, schema, table, filter });
+      const { sql, params } = buildSelect({ engine: connection.engine, schema, table, filter, sort });
       const cols: ColumnMeta[] = [];
       const allRows: CellValue[][] = [];
       let didTruncate = false;
@@ -345,6 +386,8 @@ export function DataGrid({
         edits={edits}
         deletes={deletes}
         inserts={inserts}
+        sort={sort}
+        onSort={onSort}
         onEdit={setCellEdit}
         onToggleDelete={toggleDelete}
         onInsertEdit={setInsertCell}
@@ -483,6 +526,8 @@ interface GridBodyProps {
   edits: Edits;
   deletes: Set<number>;
   inserts: InsertRow[];
+  sort: SortSpec | null;
+  onSort: (column: string) => void;
   onEdit: (rowIndex: number, colIndex: number, raw: string) => void;
   onToggleDelete: (rowIndex: number) => void;
   onInsertEdit: (id: number, colIndex: number, raw: string) => void;
@@ -497,6 +542,8 @@ function GridBody({
   edits,
   deletes,
   inserts,
+  sort,
+  onSort,
   onEdit,
   onToggleDelete,
   onInsertEdit,
@@ -540,16 +587,35 @@ function GridBody({
         style={{ width: totalWidth }}
       >
         <div className="shrink-0 border-r border-border" style={{ width: GUTTER_WIDTH }} />
-        {columns.map((col) => (
-          <div
-            key={col.name}
-            style={{ width: COL_WIDTH }}
-            className="flex shrink-0 flex-col justify-center border-r border-border px-2 py-1"
-          >
-            <span className="truncate text-xs font-semibold">{col.name}</span>
-            <span className="truncate text-[10px] text-muted-foreground">{col.dataType}</span>
-          </div>
-        ))}
+        {columns.map((col) => {
+          const active = sort?.column === col.name;
+          return (
+            <button
+              key={col.name}
+              type="button"
+              onClick={() => onSort(col.name)}
+              style={{ width: COL_WIDTH }}
+              title={`Sort by ${col.name}`}
+              className="group flex shrink-0 items-center gap-1 border-r border-border px-2 py-1 text-left hover:bg-accent/50"
+            >
+              <span className="flex min-w-0 flex-col justify-center">
+                <span className="truncate text-xs font-semibold">{col.name}</span>
+                <span className="truncate text-[10px] text-muted-foreground">{col.dataType}</span>
+              </span>
+              <span className="ml-auto shrink-0">
+                {active ? (
+                  sort?.dir === "asc" ? (
+                    <ChevronUp className="h-3.5 w-3.5 text-primary" />
+                  ) : (
+                    <ChevronDown className="h-3.5 w-3.5 text-primary" />
+                  )
+                ) : (
+                  <ChevronsUpDown className="h-3.5 w-3.5 text-muted-foreground/40 opacity-0 group-hover:opacity-100" />
+                )}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       <div style={{ height: canvasHeight, width: totalWidth, position: "relative" }}>

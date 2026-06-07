@@ -3,7 +3,7 @@ import * as ipc from "@/lib/ipc";
 import type { CellValue, ConnectionConfig, QueryResult, Schema } from "@/lib/types";
 import { useConnections } from "@/features/connections/useConnections";
 import { useWorkspaceStore } from "@/store/useWorkspaceStore";
-import { buildSelect, type QuickFilter } from "./sql";
+import { buildSelect, type QuickFilter, type SortSpec } from "./sql";
 
 /** The connection currently open in the workspace. */
 export function useActiveConnection(): ConnectionConfig | undefined {
@@ -27,16 +27,18 @@ export function useTableData(args: {
   page: number;
   pageSize: number;
   filter: QuickFilter | null;
+  sort: SortSpec | null;
 }) {
-  const { connection, schema, table, page, pageSize, filter } = args;
+  const { connection, schema, table, page, pageSize, filter, sort } = args;
   return useQuery<QueryResult>({
-    queryKey: ["tableData", connection.id, schema, table, page, pageSize, filter],
+    queryKey: ["tableData", connection.id, schema, table, page, pageSize, filter, sort],
     queryFn: () => {
       const { sql, params } = buildSelect({
         engine: connection.engine,
         schema,
         table,
         filter,
+        sort,
         limit: pageSize,
         offset: page * pageSize,
       });

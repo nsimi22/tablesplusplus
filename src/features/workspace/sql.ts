@@ -21,6 +21,13 @@ export type FilterOp = "=" | "!=" | "<" | ">" | "contains";
 
 export const FILTER_OPS: FilterOp[] = ["=", "!=", "<", ">", "contains"];
 
+export type SortDir = "asc" | "desc";
+
+export interface SortSpec {
+  column: string;
+  dir: SortDir;
+}
+
 export interface QuickFilter {
   column: string;
   op: FilterOp;
@@ -46,11 +53,13 @@ export function buildSelect(args: {
   schema: string;
   table: string;
   filter: QuickFilter | null;
+  /** Optional ORDER BY clause (server-side sort). */
+  sort?: SortSpec | null;
   /** Omit `limit` to select the whole (filtered) table — used by full-table export. */
   limit?: number;
   offset?: number;
 }): { sql: string; params: CellValue[] } {
-  const { engine, schema, table, filter, limit, offset } = args;
+  const { engine, schema, table, filter, sort, limit, offset } = args;
   const params: CellValue[] = [];
   let sql = `SELECT * FROM ${qualified(engine, schema, table)}`;
 
@@ -79,6 +88,12 @@ export function buildSelect(args: {
       sql += ` WHERE ${textCast(engine, filter.column)} ${filter.op} ${ph}`;
       params.push({ kind: "text", value: filter.value });
     }
+  }
+
+  if (sort) {
+    // `dir` is a constrained union, never user text; the column is a real identifier, quoted.
+    const dir = sort.dir === "desc" ? "DESC" : "ASC";
+    sql += ` ORDER BY ${quoteIdent(engine, sort.column)} ${dir}`;
   }
 
   if (limit !== undefined) {
