@@ -2,7 +2,9 @@ name: Release
 
 # Builds signed installers for macOS, Windows, and Linux and publishes them — plus the
 # `latest.json` the in-app updater reads — to a GitHub Release. Triggered by pushing a tag
-# like `v0.1.0`, or run manually.
+# like `v0.3.0`, or run manually from the Actions tab with a `tag` input (e.g. `v0.3.0`) — in
+# which case the tag is created on the selected commit. Either way the tag must match the app
+# version in the manifests (a guard enforces this), so a manual run can't mislabel the release.
 #
 # Required repository secrets (Settings → Secrets and variables → Actions):
 #   TAURI_SIGNING_PRIVATE_KEY           Tauri updater private key (minisign). Must match the
@@ -20,11 +22,19 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build and publish (must match the app version, e.g. v0.3.0)"
+        required: true
+        type: string
 
 jobs:
   release:
     permissions:
       contents: write
+    # The release tag: the pushed tag for tag events, or the manual input for a dispatched run.
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
     strategy:
       fail-fast: false
       matrix:
@@ -38,6 +48,22 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
+
+      # Fail fast (before the long build) if the tag doesn't match the version in the manifests,
+      # so a manual run from a branch can't publish a mislabeled release.
+      - name: Verify release tag matches the app version
+        shell: bash
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ -z "${RELEASE_TAG}" ]; then
+            echo "::error::No release tag resolved. Push a v* tag, or run the workflow with a 'tag' input."
+            exit 1
+          fi
+          if [ "${RELEASE_TAG}" != "v${version}" ]; then
+            echo "::error::Tag '${RELEASE_TAG}' does not match package.json version 'v${version}'. Bump the version in package.json, src-tauri/Cargo.toml and src-tauri/tauri.conf.json, or use the matching tag."
+            exit 1
+          fi
+          echo "Releasing ${RELEASE_TAG} (matches package.json v${version})."
 
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-22.04'
@@ -77,8 +103,9 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "Tables++ ${{ github.ref_name }}"
+          # On a manual dispatch this tag is created on the checked-out commit.
+          tagName: ${{ env.RELEASE_TAG }}
+          releaseName: "Tables++ ${{ env.RELEASE_TAG }}"
           releaseBody: "Download the installer for your platform below."
           # Publish immediately — no draft step. Note: the release is public as soon as the
           # first platform job creates it; the other platforms' assets land minutes later.

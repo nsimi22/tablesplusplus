@@ -57,12 +57,20 @@ OS shows a one-time warning on first launch).
    `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` (the updater compares the
    `tauri.conf.json` version). Then refresh the lockfiles: `npm install` updates
    `package-lock.json`, and `cargo check` inside `src-tauri` updates `Cargo.lock`.
-2. Tag and push:
+2. Trigger the release **one of two ways** — both require the tag to match the version you just
+   bumped (a workflow guard fails the build otherwise):
 
-   ```bash
-   git tag v0.1.0
-   git push origin v0.1.0
-   ```
+   - **Push a tag:**
+
+     ```bash
+     git tag v0.3.0
+     git push origin v0.3.0
+     ```
+
+   - **From the Actions tab:** open **Actions → Release → Run workflow**, and enter the `tag`
+     (e.g. `v0.3.0`). The workflow creates that tag on the selected commit (default `main`) and
+     publishes the release. (Running it *without* a matching tag/version fails fast, so you can't
+     accidentally publish a release named after a branch.)
 
 3. The **Release** workflow builds all three platforms, signs the update artifacts, and
    **publishes** a GitHub Release with the installers + `latest.json`. Existing installs will see
