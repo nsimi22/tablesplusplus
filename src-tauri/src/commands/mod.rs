@@ -3,11 +3,13 @@
 
 mod ai;
 mod connections;
+mod export;
 mod query;
 mod session;
 
 pub use ai::*;
 pub use connections::*;
+pub use export::*;
 pub use query::*;
 pub use session::*;
 

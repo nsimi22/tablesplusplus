@@ -46,8 +46,9 @@ export function buildSelect(args: {
   schema: string;
   table: string;
   filter: QuickFilter | null;
-  limit: number;
-  offset: number;
+  /** Omit `limit` to select the whole (filtered) table — used by full-table export. */
+  limit?: number;
+  offset?: number;
 }): { sql: string; params: CellValue[] } {
   const { engine, schema, table, filter, limit, offset } = args;
   const params: CellValue[] = [];
@@ -80,7 +81,9 @@ export function buildSelect(args: {
     }
   }
 
-  sql += ` LIMIT ${limit} OFFSET ${offset}`;
+  if (limit !== undefined) {
+    sql += ` LIMIT ${limit} OFFSET ${offset ?? 0}`;
+  }
   return { sql, params };
 }
 

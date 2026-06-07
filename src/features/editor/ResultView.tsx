@@ -1,9 +1,15 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { QueryResult } from "@/lib/types";
+import { errorMessage, type QueryResult } from "@/lib/types";
 import { displayCell } from "@/features/grid/cell";
+import { ExportMenu } from "@/features/export/ExportMenu";
+import {
+  copyRowsToClipboard,
+  exportRowsToFile,
+  type ExportFormat,
+} from "@/features/export/exportActions";
 
 const ROW_HEIGHT = 26;
 const COL_WIDTH = 176;
@@ -60,6 +66,33 @@ export function ResultView({ result, error, streaming, streamedRows, truncated }
 
 function ResultTable({ result, truncated }: { result: QueryResult; truncated?: boolean }) {
   const parentRef = useRef<HTMLDivElement>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  // Export/copy the in-memory result (what's shown). Re-running the console SQL would be unsafe
+  // (it may be DML), so export serializes the rows already streamed into the view.
+  const exportResult = async (format: ExportFormat) => {
+    setExportError(null);
+    try {
+      await exportRowsToFile({
+        columns: result.columns,
+        rows: result.rows,
+        format,
+        defaultName: "query-result",
+      });
+    } catch (err) {
+      setExportError(errorMessage(err));
+    }
+  };
+
+  const copyResult = async () => {
+    setExportError(null);
+    try {
+      await copyRowsToClipboard(result.columns, result.rows);
+    } catch (err) {
+      setExportError(errorMessage(err));
+    }
+  };
+
   const virtualizer = useVirtualizer({
     count: result.rows.length,
     getScrollElement: () => parentRef.current,
@@ -120,11 +153,23 @@ function ResultTable({ result, truncated }: { result: QueryResult; truncated?: b
           ))}
         </div>
       </div>
-      <div className="border-t border-border px-3 py-1 text-xs text-muted-foreground">
-        {result.rows.length.toLocaleString()} rows · {result.elapsedMs} ms
-        {truncated ? (
-          <span className="ml-2 text-warning">· truncated at the streaming limit</span>
-        ) : null}
+      <div className="flex items-center justify-between border-t border-border px-3 py-1 text-xs text-muted-foreground">
+        <span className={exportError ? "text-destructive" : ""}>
+          {exportError ?? (
+            <>
+              {result.rows.length.toLocaleString()} rows · {result.elapsedMs} ms
+              {truncated ? (
+                <span className="ml-2 text-warning">· truncated at the streaming limit</span>
+              ) : null}
+            </>
+          )}
+        </span>
+        <ExportMenu
+          onExport={exportResult}
+          onCopy={result.rows.length ? copyResult : undefined}
+          disabled={result.columns.length === 0}
+          scopeHint={truncated ? "Exports the rows shown (truncated set)." : undefined}
+        />
       </div>
     </div>
   );

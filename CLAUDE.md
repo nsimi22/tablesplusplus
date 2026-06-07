@@ -395,6 +395,16 @@ npm run typecheck
   is unsupported (errors clearly), and over a tunnel the DB sees a `127.0.0.1` peer, so TLS
   `verifyCa`/`verifyFull` will fail hostname checks — pair a tunnel with a non-verifying SSL mode.
   Compile- and clippy-verified; not runtime-tested (no live bastion in CI/sandbox).
+- [2026-06-07] Export — Result sets export to **CSV/JSON** and copy to the clipboard as **TSV**
+  (`src/lib/export.ts` serializers; `src/features/export/`). Two scopes: the **grid** exports the
+  whole *filtered* table by streaming the unpaged generated `SELECT` via `execute_query_stream`
+  (safe to re-run), while the **SQL console** exports the in-memory result *as shown* — it never
+  re-runs the console SQL, which could be DML. Both inherit the `STREAM_MAX_ROWS` cap (export
+  surfaces the truncation). The native save dialog comes from `tauri-plugin-dialog` (`save()`),
+  clipboard from `tauri-plugin-clipboard-manager`; the chosen path is written by a thin Rust
+  command (`write_text_file`, std/tokio fs) so saving anywhere needs no fs-plugin scope. New
+  capabilities: `dialog:allow-save`, `clipboard-manager:allow-write-text`. Plugins run over IPC,
+  so the strict CSP is unchanged.
 - [2026-06-06] AI — Optional, bring-your-own-key SQL assistant (Text-to-SQL / Explain / Fix).
   Provider calls run in the **Rust backend** via `reqwest` (not the webview), so the strict CSP
   needs no `connect-src` exception; the API key lives in the OS keyring (`ai:{provider}:apiKey`),

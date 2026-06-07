@@ -101,6 +101,11 @@ export function executeQueryStream(
   });
 }
 
+/** Write text to an absolute path (chosen via the native save dialog) — used by data export. */
+export function writeTextFile(path: string, contents: string): Promise<void> {
+  return invoke<void>("write_text_file", { path, contents });
+}
+
 // ---- AI assistant ----
 
 /** Current AI provider/model and whether a key is stored (never returns the key). */
