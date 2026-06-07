@@ -6,9 +6,10 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Spinner } from "@/components/ui/Spinner";
 import { cn } from "@/lib/utils";
-import { errorMessage, type CellValue, type ConnectionConfig } from "@/lib/types";
+import { errorMessage, type CellValue, type ColumnMeta, type ConnectionConfig } from "@/lib/types";
 import { useSchema, useTableData } from "@/features/workspace/hooks";
 import {
+  buildSelect,
   buildUpdate,
   coerceCellInput,
   FILTER_OPS,
@@ -17,6 +18,14 @@ import {
   type QuickFilter,
 } from "@/features/workspace/sql";
 import { useExecuteSql } from "@/features/workspace/hooks";
+import { executeQueryStream } from "@/lib/ipc";
+import { ExportMenu } from "@/features/export/ExportMenu";
+import {
+  chooseExportPath,
+  copyRowsToClipboard,
+  writeRowsToPath,
+  type ExportFormat,
+} from "@/features/export/exportActions";
 import { CommitBar } from "./CommitBar";
 import { GridCellView } from "./GridCellView";
 
@@ -41,6 +50,7 @@ export function DataGrid({
   const [draftFilter, setDraftFilter] = useState<QuickFilter>({ column: "", op: "=", value: "" });
   const [edits, setEdits] = useState<Edits>({});
   const [commitError, setCommitError] = useState<string | null>(null);
+  const [exportNote, setExportNote] = useState<string | null>(null);
 
   const { data: schemaData } = useSchema(connection.id);
   const tableInfo = useMemo(
@@ -144,6 +154,43 @@ export function DataGrid({
     }
   };
 
+  // Export the entire (filtered) table, not just the visible page: stream the unpaged SELECT
+  // and serialize the accumulated rows. Safe to re-run — it's an app-generated SELECT. The path
+  // is chosen first so cancelling the dialog skips the (potentially large) fetch entirely.
+  const exportAll = async (format: ExportFormat) => {
+    setExportNote(null);
+    try {
+      const path = await chooseExportPath(format, table);
+      if (!path) return;
+      const { sql, params } = buildSelect({ engine: connection.engine, schema, table, filter });
+      const cols: ColumnMeta[] = [];
+      const allRows: CellValue[][] = [];
+      let didTruncate = false;
+      await executeQueryStream({ id: connection.id, sql, params }, (chunk) => {
+        if (chunk.kind === "columns") cols.push(...chunk.columns);
+        else if (chunk.kind === "rows") for (const r of chunk.rows) allRows.push(r);
+        else didTruncate = chunk.truncated;
+      });
+      await writeRowsToPath(path, cols.length ? cols : columns, allRows, format);
+      if (didTruncate) {
+        setExportNote(
+          `Exported ${allRows.length.toLocaleString()} rows (stopped at the streaming limit).`,
+        );
+      }
+    } catch (err) {
+      setExportNote(errorMessage(err));
+    }
+  };
+
+  const copyPage = async () => {
+    setExportNote(null);
+    try {
+      await copyRowsToClipboard(columns, rows);
+    } catch (err) {
+      setExportNote(errorMessage(err));
+    }
+  };
+
   return (
     <div className="relative flex h-full flex-col">
       <FilterBarView
@@ -181,10 +228,16 @@ export function DataGrid({
       />
 
       <div className="flex items-center justify-between border-t border-border px-3 py-1.5 text-xs text-muted-foreground">
-        <span>
-          {rows.length} rows{filter ? " (filtered)" : ""} · page {page + 1}
+        <span className={exportNote ? "text-warning" : ""}>
+          {exportNote ?? `${rows.length} rows${filter ? " (filtered)" : ""} · page ${page + 1}`}
         </span>
         <div className="flex items-center gap-1">
+          <ExportMenu
+            onExport={exportAll}
+            onCopy={rows.length ? copyPage : undefined}
+            disabled={columns.length === 0}
+            scopeHint="Export covers the whole (filtered) table; copy is this page."
+          />
           <Button
             size="icon"
             variant="ghost"

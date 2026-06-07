@@ -17,7 +17,13 @@ use crate::db::pool::PoolRegistry;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let mut builder = tauri::Builder::default();
+    let mut builder = tauri::Builder::default()
+        // Native save dialog + clipboard + filesystem for data export (CLAUDE.md §11). The dialog
+        // grants the picked path to the fs scope at runtime, so the webview writes only to the
+        // file the user chose — no arbitrary-write primitive.
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_fs::init());
     // Auto-update + relaunch are desktop-only.
     #[cfg(desktop)]
     {

@@ -3,5 +3,12 @@
   "identifier": "default",
   "description": "Core capability for the main window.",
   "windows": ["main"],
-  "permissions": ["core:default", "updater:default", "process:allow-restart"]
+  "permissions": [
+    "core:default",
+    "updater:default",
+    "process:allow-restart",
+    "dialog:allow-save",
+    "clipboard-manager:allow-write-text",
+    "fs:allow-write-text-file"
+  ]
 }
