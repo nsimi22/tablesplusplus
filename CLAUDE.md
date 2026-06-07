@@ -395,12 +395,16 @@ npm run typecheck
   is unsupported (errors clearly), and over a tunnel the DB sees a `127.0.0.1` peer, so TLS
   `verifyCa`/`verifyFull` will fail hostname checks — pair a tunnel with a non-verifying SSL mode.
   Compile- and clippy-verified; not runtime-tested (no live bastion in CI/sandbox).
-- [2026-06-06] Saved Queries — The SQL console's "Saved Queries" menu is a **read-only** view
-  over query-mcp's snippet store (`~/.query-mcp/store.db`, SQLite table `snippets`), read via
-  `rusqlite` (bundled) in `src-tauri/src/saved_queries.rs` on `spawn_blocking`. Selecting one
-  inserts its SQL at the cursor. Missing file/table → empty list, never an error. Tables++ never
-  writes to that store — query-mcp owns it; if its schema changes, update both sides (the same
-  cross-repo coupling as the §4.1 connections.json note, in the other direction).
+- [2026-06-06] Saved Queries — A **read-only** view over query-mcp's snippet store
+  (`~/.query-mcp/store.db`, SQLite table `snippets`), read via `rusqlite` (bundled) in
+  `src-tauri/src/saved_queries.rs` on `spawn_blocking`. Missing file/table → empty list, never an
+  error. Tables++ never writes to that store — query-mcp owns it; if its schema changes, update
+  both sides (the same cross-repo coupling as the §4.1 connections.json note, in the other
+  direction). [2026-06-07] Moved from a SQL-console toolbar dropdown to a **sidebar group** in
+  `SchemaTree` (below Functions, filtered by the sidebar search; snippets are global, not
+  per-connection). Clicking one **opens a new query tab** pre-filled with its SQL
+  (`openQueryTab({title, sql})`) rather than inserting at the cursor. `refetchOnWindowFocus`
+  picks up snippets saved from a Claude session when the app regains focus.
 - [2026-06-07] Multi-connection — Several connections can be **open at once** (backend already
   supported it — `PoolRegistry` is a per-id `DashMap`). `useWorkspaceStore` now holds
   `openConnectionIds` + an `activeConnectionId` (the focused connection that drives the sidebar and

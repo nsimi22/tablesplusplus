@@ -79,7 +79,7 @@ export function TabBar() {
         })}
       </div>
       <button
-        onClick={openQueryTab}
+        onClick={() => openQueryTab()}
         className="flex items-center px-3 text-muted-foreground hover:bg-accent/50 hover:text-foreground"
         aria-label="New query tab"
         title="New SQL query"

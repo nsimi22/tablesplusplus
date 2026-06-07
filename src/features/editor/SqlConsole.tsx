@@ -16,7 +16,6 @@ import { AiSettingsDialog } from "@/features/ai/AiSettingsDialog";
 import { HistoryPanel } from "@/features/history/HistoryPanel";
 import { explainPrompts, fixPrompts, stripSqlFences, textToSqlPrompts } from "@/features/ai/prompts";
 import { ResultView } from "./ResultView";
-import { SavedQueriesMenu } from "./SavedQueriesMenu";
 
 type MonacoApi = Parameters<OnMount>[1];
 type CodeEditor = Parameters<OnMount>[0];
@@ -376,7 +375,6 @@ export function SqlConsole({
           <Wrench className="h-3.5 w-3.5" />
           Fix
         </Button>
-        <SavedQueriesMenu onInsert={(text) => applyEdit(captureRange("insert"), text)} />
         <div className="ml-auto flex items-center gap-2">
           <HistoryPanel onPick={loadIntoEditor} />
           <Button

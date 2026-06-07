@@ -38,7 +38,8 @@ interface WorkspaceState {
   setHubOpen: (open: boolean) => void;
 
   openTableTab: (table: Pick<TableInfo, "schema" | "name">) => void;
-  openQueryTab: () => void;
+  /** Open a new SQL tab; `initial` pre-fills it (e.g. a saved query from the sidebar). */
+  openQueryTab: (initial?: { title?: string; sql?: string }) => void;
   setTabSql: (tabId: string, sql: string) => void;
   setActiveTab: (tabId: string) => void;
   /** Pin a tab to the right pane (or unpin it if already pinned). Max 2 panes. */
@@ -143,7 +144,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       return { tabs: [...state.tabs, tab], activeTabId: id };
     }),
 
-  openQueryTab: () =>
+  openQueryTab: (initial) =>
     set((state) => {
       const connectionId = state.activeConnectionId;
       if (!connectionId) return {};
@@ -153,8 +154,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         id,
         connectionId,
         kind: "query",
-        title: `Query ${queryCounter}`,
-        sql: "",
+        title: initial?.title ?? `Query ${queryCounter}`,
+        sql: initial?.sql ?? "",
       };
       return { tabs: [...state.tabs, tab], activeTabId: id };
     }),

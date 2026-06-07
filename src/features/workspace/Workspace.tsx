@@ -51,7 +51,7 @@ export function Workspace() {
         ) : null}
         <div className="ml-auto flex items-center gap-1">
           <ThemeToggle />
-          <Button size="sm" variant="ghost" onClick={openQueryTab}>
+          <Button size="sm" variant="ghost" onClick={() => openQueryTab()}>
             <TerminalSquare className="h-4 w-4" />
             New Query
           </Button>
@@ -68,7 +68,7 @@ export function Workspace() {
             <TabBar />
             <div className="flex-1 overflow-hidden bg-background">
               {!soloTab ? (
-                <EmptyState onNewQuery={openQueryTab} />
+                <EmptyState onNewQuery={() => openQueryTab()} />
               ) : activeTab && secondaryTab && activeTab.id !== secondaryTab.id ? (
                 // Split only when two *distinct* tabs are selected (max 2 panes). The two panes
                 // may belong to different connections (compare two databases side by side).
