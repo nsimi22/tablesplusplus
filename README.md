@@ -68,13 +68,13 @@ caveats in [Status & roadmap](#status--roadmap).
 ## Install
 
 Pre-built installers are attached to each
-[GitHub Release](https://github.com/nsimi22/tablesplusplus/releases) — current version: **v0.1.1**.
+[GitHub Release](https://github.com/nsimi22/tablesplusplus/releases) — current version: **v0.2.0**.
 
 | Platform | Download |
 |----------|----------|
-| macOS (universal — Apple Silicon + Intel) | [`.dmg`](https://github.com/nsimi22/tablesplusplus/releases/download/v0.1.1/Tables%2B%2B_0.1.1_universal.dmg) |
-| Windows | [`.msi`](https://github.com/nsimi22/tablesplusplus/releases/download/v0.1.1/Tables%2B%2B_0.1.1_x64_en-US.msi) / [`.exe`](https://github.com/nsimi22/tablesplusplus/releases/download/v0.1.1/Tables%2B%2B_0.1.1_x64-setup.exe) |
-| Linux | [`.AppImage`](https://github.com/nsimi22/tablesplusplus/releases/download/v0.1.1/Tables%2B%2B_0.1.1_amd64.AppImage) / [`.deb`](https://github.com/nsimi22/tablesplusplus/releases/download/v0.1.1/Tables%2B%2B_0.1.1_amd64.deb) / [`.rpm`](https://github.com/nsimi22/tablesplusplus/releases/download/v0.1.1/Tables%2B%2B-0.1.1-1.x86_64.rpm) |
+| macOS (universal — Apple Silicon + Intel) | [`.dmg`](https://github.com/nsimi22/tablesplusplus/releases/download/v0.2.0/Tables%2B%2B_0.2.0_universal.dmg) |
+| Windows | [`.msi`](https://github.com/nsimi22/tablesplusplus/releases/download/v0.2.0/Tables%2B%2B_0.2.0_x64_en-US.msi) / [`.exe`](https://github.com/nsimi22/tablesplusplus/releases/download/v0.2.0/Tables%2B%2B_0.2.0_x64-setup.exe) |
+| Linux | [`.AppImage`](https://github.com/nsimi22/tablesplusplus/releases/download/v0.2.0/Tables%2B%2B_0.2.0_amd64.AppImage) / [`.deb`](https://github.com/nsimi22/tablesplusplus/releases/download/v0.2.0/Tables%2B%2B_0.2.0_amd64.deb) / [`.rpm`](https://github.com/nsimi22/tablesplusplus/releases/download/v0.2.0/Tables%2B%2B-0.2.0-1.x86_64.rpm) |
 
 The macOS build is **signed and notarized**; once installed, the app keeps itself current via
 [auto-updates](#auto-updates), so these links only matter the first time.
