@@ -80,6 +80,8 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: "Tables++ ${{ github.ref_name }}"
           releaseBody: "Download the installer for your platform below."
-          releaseDraft: true
+          # Publish immediately — no draft step. Note: the release is public as soon as the
+          # first platform job creates it; the other platforms' assets land minutes later.
+          releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
