@@ -202,7 +202,7 @@ npm run typecheck && npm run lint && npm run build
 ## Releasing
 
 Tagging `vX.Y.Z` triggers `.github/workflows/release.yml`, which builds and signs installers for
-all three platforms and publishes a **draft** GitHub Release with the updater manifest.
+all three platforms and **publishes** a GitHub Release with the updater manifest.
 
 > Bump the version in **all three** of `package.json`, `src-tauri/Cargo.toml`, and
 > `src-tauri/tauri.conf.json` before tagging.

@@ -64,9 +64,10 @@ OS shows a one-time warning on first launch).
    git push origin v0.1.0
    ```
 
-3. The **Release** workflow builds all three platforms, signs the update artifacts, and creates a
-   **draft GitHub Release** with the installers + `latest.json`.
-4. Review the draft and **publish** it. Existing installs will see the update on their next launch.
+3. The **Release** workflow builds all three platforms, signs the update artifacts, and
+   **publishes** a GitHub Release with the installers + `latest.json`. Existing installs will see
+   the update on their next launch.
 
-> The updater endpoint is `…/releases/latest/download/latest.json`, so it always points at the
-> newest **published** (non-draft) release.
+> The release is published directly (not a draft), so the updater endpoint
+> `…/releases/latest/download/latest.json` picks it up as soon as the build finishes. If you'd
+> rather gate releases behind a manual review, set `releaseDraft: true` in `release.yml`.
