@@ -420,8 +420,9 @@ npm run typecheck
   edits, all staged into the same batch `CommitBar` (counts shown per kind: edited/new/to-delete).
   A leading gutter column holds a delete/restore toggle per existing row (deleted rows render
   struck-through, read-only); an "Add row" button appends draft rows (rendered below the
-  virtualized data rows) whose cells coerce via the **sampled column kind** (same approach as the
-  quick filter — unset cells are omitted from the INSERT so DB defaults/serials apply). Commit
+  virtualized data rows, and scrolled into view on add) whose cells coerce via the **sampled
+  column kind** (same approach as the quick filter — unset cells are omitted from the INSERT so DB
+  defaults/serials apply). Commit
   order is deletes → updates → inserts; each statement is dropped from its pending set only after
   it succeeds, so a mid-batch failure never re-inserts/re-applies on retry. Inserts don't require a
   PK; edits/deletes still do (the no-PK warning only fires when those are pending). Builders live

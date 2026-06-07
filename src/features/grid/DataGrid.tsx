@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   ChevronDown,
@@ -570,6 +570,17 @@ function GridBody({
     estimateSize: () => ROW_HEIGHT,
     overscan: 14,
   });
+
+  // Draft insert rows are appended below the data rows; scroll them into view when one is added
+  // (otherwise "Add row" on a long page appends far below the fold with no visible feedback).
+  // useLayoutEffect so the scroll lands before paint — no one-frame flash of the un-scrolled view.
+  const prevInsertCount = useRef(inserts.length);
+  useLayoutEffect(() => {
+    if (inserts.length > prevInsertCount.current && parentRef.current) {
+      parentRef.current.scrollTop = parentRef.current.scrollHeight;
+    }
+    prevInsertCount.current = inserts.length;
+  }, [inserts.length]);
 
   const totalWidth = GUTTER_WIDTH + columns.length * COL_WIDTH;
   // Draft insert rows render below the (virtualized) data rows, so extend the canvas height.
