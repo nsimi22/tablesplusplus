@@ -61,6 +61,18 @@ function lastTabOf(tabs: WorkspaceTab[], connectionId: string | null): string | 
   return null;
 }
 
+/** Keep a secondary (split) pane only if it's still a valid, *distinct* second tab: there must be
+ *  an active tab, and the secondary must still exist and differ from it. Otherwise collapse the
+ *  split (null) so we never render a stale tab solo or duplicate the active tab. */
+function keepSecondary(
+  secondaryTabId: string | null,
+  tabs: WorkspaceTab[],
+  activeTabId: string | null,
+): string | null {
+  if (!activeTabId || !secondaryTabId || secondaryTabId === activeTabId) return null;
+  return tabs.some((t) => t.id === secondaryTabId) ? secondaryTabId : null;
+}
+
 export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   openConnectionIds: [],
   activeConnectionId: null,
@@ -70,20 +82,28 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   secondaryTabId: null,
 
   openConnection: (connectionId) =>
-    set((state) => ({
-      openConnectionIds: state.openConnectionIds.includes(connectionId)
-        ? state.openConnectionIds
-        : [...state.openConnectionIds, connectionId],
-      activeConnectionId: connectionId,
-      hubOpen: false,
-      activeTabId: lastTabOf(state.tabs, connectionId),
-    })),
+    set((state) => {
+      const activeTabId = lastTabOf(state.tabs, connectionId);
+      return {
+        openConnectionIds: state.openConnectionIds.includes(connectionId)
+          ? state.openConnectionIds
+          : [...state.openConnectionIds, connectionId],
+        activeConnectionId: connectionId,
+        hubOpen: false,
+        activeTabId,
+        secondaryTabId: keepSecondary(state.secondaryTabId, state.tabs, activeTabId),
+      };
+    }),
 
   setActiveConnection: (connectionId) =>
-    set((state) => ({
-      activeConnectionId: connectionId,
-      activeTabId: lastTabOf(state.tabs, connectionId),
-    })),
+    set((state) => {
+      const activeTabId = lastTabOf(state.tabs, connectionId);
+      return {
+        activeConnectionId: connectionId,
+        activeTabId,
+        secondaryTabId: keepSecondary(state.secondaryTabId, state.tabs, activeTabId),
+      };
+    }),
 
   setHubOpen: (open) => set({ hubOpen: open }),
 
@@ -99,10 +119,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       if (!activeTabId || !tabs.some((t) => t.id === activeTabId)) {
         activeTabId = lastTabOf(tabs, activeConnectionId);
       }
-      const secondaryTabId =
-        state.secondaryTabId && tabs.some((t) => t.id === state.secondaryTabId)
-          ? state.secondaryTabId
-          : null;
+      const secondaryTabId = keepSecondary(state.secondaryTabId, tabs, activeTabId);
       // Returning to no open connections shows the hub (driven by openConnectionIds in App).
       return { openConnectionIds, tabs, activeConnectionId, activeTabId, secondaryTabId };
     }),
@@ -179,7 +196,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         const nextTab = tabs.find((t) => t.id === next);
         if (nextTab) activeConnectionId = nextTab.connectionId;
       }
-      const secondaryTabId = state.secondaryTabId === tabId ? null : state.secondaryTabId;
+      const secondaryTabId = keepSecondary(state.secondaryTabId, tabs, activeTabId);
       return { tabs, activeTabId, activeConnectionId, secondaryTabId };
     }),
 }));
