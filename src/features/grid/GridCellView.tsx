@@ -16,6 +16,12 @@ interface GridCellViewProps {
 /** A single grid cell. Double-click to edit scalar values; Enter commits, Esc cancels. */
 export function GridCellView({ width, value, edited, disabled, onCommit }: GridCellViewProps) {
   const [editing, setEditing] = useState(false);
+
+  // Close an open editor if the row becomes read-only (e.g. marked for deletion mid-edit).
+  useEffect(() => {
+    if (disabled) setEditing(false);
+  }, [disabled]);
+
   const display = edited ?? value;
   const isNull = display.kind === "null";
   const text = displayCell(display);

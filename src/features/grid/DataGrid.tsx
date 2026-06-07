@@ -157,7 +157,9 @@ export function DataGrid({
 
   const addInsertRow = () => {
     setCommitError(null);
-    setInserts((prev) => [...prev, { id: insertIdRef.current++, cells: {} }]);
+    // Advance the ref outside the updater — updaters can run twice under Strict/concurrent mode.
+    const id = insertIdRef.current++;
+    setInserts((prev) => [...prev, { id, cells: {} }]);
   };
 
   const discardInsert = (id: number) => {

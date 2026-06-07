@@ -107,6 +107,10 @@ export function buildUpdate(args: {
   where: ColumnValue[];
 }): { sql: string; params: CellValue[] } {
   const { engine, schema, table, set, where } = args;
+  // Refuse to build an unconditional UPDATE — an empty WHERE would rewrite the whole table.
+  if (where.length === 0) {
+    throw new Error("Refusing to build an UPDATE with no WHERE conditions.");
+  }
   const params: CellValue[] = [];
   let i = 1;
 
@@ -166,6 +170,10 @@ export function buildDelete(args: {
   where: ColumnValue[];
 }): { sql: string; params: CellValue[] } {
   const { engine, schema, table, where } = args;
+  // Refuse to build an unconditional DELETE — an empty WHERE would wipe the whole table.
+  if (where.length === 0) {
+    throw new Error("Refusing to build a DELETE with no WHERE conditions.");
+  }
   const params: CellValue[] = [];
   const whereClause = where
     .map((c, i) => {
