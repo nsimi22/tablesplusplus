@@ -1,7 +1,7 @@
 {
   "name": "tablesplusplus",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "type": "module",
   "description": "Tables++ — an ultra-fast, premium desktop database GUI client.",
   "scripts": {
