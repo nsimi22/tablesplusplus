@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { Dialog } from "@/components/ui/Dialog";
@@ -28,7 +28,11 @@ function detailText(cell: CellValue): string {
     case "bytes":
       return cell.value.data; // base64
     case "json":
-      return JSON.stringify(cell.value, null, 2);
+      try {
+        return JSON.stringify(cell.value, null, 2);
+      } catch {
+        return String(cell.value);
+      }
   }
 }
 
@@ -50,12 +54,12 @@ function base64ToHex(b64: string): string {
   }
 }
 
+/** Exact decoded byte length from the base64 string, in O(1) — no need to decode the payload. */
 function byteCount(b64: string): number {
-  try {
-    return atob(b64).length;
-  } catch {
-    return Math.floor((b64.length * 3) / 4);
-  }
+  const len = b64.length;
+  if (len === 0) return 0;
+  const padding = b64.endsWith("==") ? 2 : b64.endsWith("=") ? 1 : 0;
+  return (len * 3) / 4 - padding;
 }
 
 /** A read-only viewer for a single cell's full value. Pass `detail = null` to keep it closed. */
@@ -69,10 +73,17 @@ export function CellDetailDialog({
   const [copied, setCopied] = useState(false);
   const [bytesAsHex, setBytesAsHex] = useState(false);
 
-  if (!detail) return null;
-  const { cell, columnName } = detail;
+  // Memoized so toggling `copied`/unrelated state doesn't re-run hex/JSON formatting. Computed
+  // before the early return to keep hook order stable.
+  const cell = detail?.cell ?? null;
+  const shown = useMemo(() => {
+    if (!cell) return "";
+    return cell.kind === "bytes" && bytesAsHex ? base64ToHex(cell.value.data) : detailText(cell);
+  }, [cell, bytesAsHex]);
+
+  if (!detail || !cell) return null;
+  const { columnName } = detail;
   const isBytes = cell.kind === "bytes";
-  const shown = isBytes && bytesAsHex ? base64ToHex(cell.value.data) : detailText(cell);
 
   const copy = async () => {
     try {

@@ -179,7 +179,7 @@ export function DataGrid({
 
   const openDetail = (rowIndex: number, colIndex: number) => {
     const cell = edits[rowIndex]?.[colIndex] ?? rows[rowIndex]?.[colIndex];
-    if (cell) setDetail({ columnName: columns[colIndex].name, cell });
+    if (cell) setDetail({ columnName: columns[colIndex]?.name ?? "", cell });
   };
 
   const setCellEdit = (rowIndex: number, colIndex: number, raw: string) => {
