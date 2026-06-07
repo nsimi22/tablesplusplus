@@ -96,6 +96,23 @@ export function DataGrid({
   const [commitError, setCommitError] = useState<string | null>(null);
   const [exportNote, setExportNote] = useState<string | null>(null);
 
+  // Reset table-scoped state *during render* when the table/connection changes, so the very first
+  // render of a new table can't query it with the previous table's page/filter/sort (which could
+  // reference a column that doesn't exist). This is the React "reset state on prop change" pattern;
+  // it also makes the grid correct even if the parent stops keying it by tab.
+  const tableKey = `${connection.id}/${schema}/${table}`;
+  const [prevTableKey, setPrevTableKey] = useState(tableKey);
+  if (tableKey !== prevTableKey) {
+    setPrevTableKey(tableKey);
+    setPage(0);
+    setFilter(null);
+    setSort(null);
+    setEdits({});
+    setDeletes(new Set());
+    setInserts([]);
+    setCommitError(null);
+  }
+
   const { data: schemaData } = useSchema(connection.id);
   const tableInfo = useMemo(
     () =>
@@ -116,18 +133,14 @@ export function DataGrid({
   const columns = useMemo(() => query.data?.columns ?? [], [query.data]);
   const rows = useMemo(() => query.data?.rows ?? [], [query.data]);
 
-  // Row indices change when the page/filter/sort/table changes — drop all pending changes.
+  // Row indices change when the page/filter/sort changes within a table — drop pending edits.
+  // (Table/connection changes are handled by the render-phase reset above.)
   useEffect(() => {
     setEdits({});
     setDeletes(new Set());
     setInserts([]);
     setCommitError(null);
-  }, [page, filter, sort, schema, table, connection.id]);
-
-  // Reset the sort when switching tables (a column may not exist in the next table).
-  useEffect(() => {
-    setSort(null);
-  }, [schema, table, connection.id]);
+  }, [page, filter, sort]);
 
   // Sample each column's value kind from the loaded page so draft-row input coerces correctly
   // (mirrors the quick-filter approach). Columns with no sampled value fall back to text.
