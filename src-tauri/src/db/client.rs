@@ -177,6 +177,16 @@ pub enum RoutineKind {
     Procedure,
 }
 
+/// A column's foreign-key target (single-column FKs). Drives the grid's "jump to referenced
+/// row" affordance.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForeignKeyRef {
+    pub schema: String,
+    pub table: String,
+    pub column: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ColumnInfo {
@@ -184,6 +194,9 @@ pub struct ColumnInfo {
     pub data_type: String,
     pub nullable: bool,
     pub is_primary_key: bool,
+    /// The referenced column if this column is a single-column foreign key, else `None`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub foreign_key: Option<ForeignKeyRef>,
 }
 
 #[derive(Debug, Clone, Serialize)]

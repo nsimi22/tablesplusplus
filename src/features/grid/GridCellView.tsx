@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Maximize2 } from "lucide-react";
+import { ArrowUpRight, Maximize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { CellValue } from "@/lib/types";
+import type { CellValue, ForeignKeyRef } from "@/lib/types";
 import { displayCell, editableText, isEditable } from "./cell";
 
 interface GridCellViewProps {
@@ -11,6 +11,10 @@ interface GridCellViewProps {
   edited?: CellValue;
   /** When true, the cell is read-only (e.g. a row marked for deletion). */
   disabled?: boolean;
+  /** This column's foreign-key target, if any — drives the "jump to referenced row" arrow. */
+  fk?: ForeignKeyRef;
+  /** Open the referenced row in a new tab (set only when `fk` is present and the value is set). */
+  onJump?: () => void;
   /** Open the full-value detail viewer for this cell (grid data rows only). */
   onExpand?: () => void;
   onCommit: (raw: string) => void;
@@ -18,7 +22,7 @@ interface GridCellViewProps {
 
 /** A single grid cell. Double-click to edit scalar values; Enter commits, Esc cancels.
  *  Non-editable values (json/bytes) open the detail viewer on double-click instead. */
-export function GridCellView({ width, value, edited, disabled, onExpand, onCommit }: GridCellViewProps) {
+export function GridCellView({ width, value, edited, disabled, fk, onJump, onExpand, onCommit }: GridCellViewProps) {
   const [editing, setEditing] = useState(false);
 
   // Close an open editor if the row becomes read-only (e.g. marked for deletion mid-edit).
@@ -67,16 +71,33 @@ export function GridCellView({ width, value, edited, disabled, onExpand, onCommi
           >
             {text}
           </span>
-          {onExpand && !disabled ? (
-            <button
-              type="button"
-              onClick={onExpand}
-              aria-label="View full value"
-              title="View full value"
-              className="absolute right-1 top-1/2 hidden -translate-y-1/2 rounded bg-surface-raised/90 p-0.5 text-muted-foreground hover:text-foreground group-hover/cell:block"
-            >
-              <Maximize2 className="h-3 w-3" />
-            </button>
+          {!disabled && (onExpand || (onJump && !isNull)) ? (
+            <div className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-1">
+              {onExpand ? (
+                <button
+                  type="button"
+                  onClick={onExpand}
+                  aria-label="View full value"
+                  title="View full value"
+                  className="hidden rounded bg-surface-raised/90 p-0.5 text-muted-foreground hover:text-foreground group-hover/cell:block"
+                >
+                  <Maximize2 className="h-3 w-3" />
+                </button>
+              ) : null}
+              {/* FK jump arrow is always visible (discoverable), placed at the right edge so it
+                  doesn't shift when the hover-only expand button appears to its left. */}
+              {onJump && fk && !isNull ? (
+                <button
+                  type="button"
+                  onClick={onJump}
+                  aria-label={`Open referenced row in ${fk.table}`}
+                  title={`Open referenced row in ${fk.schema}.${fk.table}`}
+                  className="rounded bg-surface-raised/90 p-0.5 text-muted-foreground hover:text-primary"
+                >
+                  <ArrowUpRight className="h-3 w-3" />
+                </button>
+              ) : null}
+            </div>
           ) : null}
         </>
       )}

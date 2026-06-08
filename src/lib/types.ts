@@ -113,11 +113,20 @@ export type StreamChunk =
 export type TableKind = "table" | "view";
 export type RoutineKind = "function" | "procedure";
 
+/** A column's foreign-key target (single-column FKs), if any. */
+export interface ForeignKeyRef {
+  schema: string;
+  table: string;
+  column: string;
+}
+
 export interface ColumnInfo {
   name: string;
   dataType: string;
   nullable: boolean;
   isPrimaryKey: boolean;
+  /** Present (omitted when null) if this column is a single-column foreign key. */
+  foreignKey?: ForeignKeyRef;
 }
 
 export interface TableInfo {

@@ -17,8 +17,15 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Spinner } from "@/components/ui/Spinner";
 import { cn } from "@/lib/utils";
-import { errorMessage, type CellValue, type ColumnMeta, type ConnectionConfig } from "@/lib/types";
+import {
+  errorMessage,
+  type CellValue,
+  type ColumnMeta,
+  type ConnectionConfig,
+  type ForeignKeyRef,
+} from "@/lib/types";
 import { useColumnWidthsStore } from "@/store/useColumnWidthsStore";
+import { useWorkspaceStore } from "@/store/useWorkspaceStore";
 import { useSchema, useTableData } from "@/features/workspace/hooks";
 import {
   buildDelete,
@@ -79,19 +86,47 @@ function seedForKind(kind: CellValue["kind"] | undefined): CellValue {
   }
 }
 
+/** The string form of a foreign-key cell value, for seeding an `=` filter on the referenced
+ *  column. Returns null for kinds that can't be a sensible FK target (null/bytes/json). */
+function fkFilterValue(cell: CellValue): string | null {
+  switch (cell.kind) {
+    case "int":
+    case "float":
+      return String(cell.value);
+    case "decimal":
+    case "text":
+    case "dateTime":
+      return cell.value;
+    case "bool":
+      return cell.value ? "true" : "false";
+    default:
+      return null;
+  }
+}
+
 export function DataGrid({
   connection,
   schema,
   table,
+  initialFilter,
+  filterRev,
 }: {
   connection: ConnectionConfig;
   schema: string;
   table: string;
+  /** A filter to apply on open (foreign-key jump). */
+  initialFilter?: QuickFilter;
+  /** Bumps each time a new jump targets this (already-open) tab, to re-apply `initialFilter`. */
+  filterRev?: number;
 }) {
   const [page, setPage] = useState(0);
-  const [filter, setFilter] = useState<QuickFilter | null>(null);
+  const [filter, setFilter] = useState<QuickFilter | null>(initialFilter ?? null);
+  const openTableTab = useWorkspaceStore((s) => s.openTableTab);
   const [sort, setSort] = useState<SortSpec | null>(null);
-  const [draftFilter, setDraftFilter] = useState<QuickFilter>({ column: "", op: "=", value: "" });
+  const [draftFilter, setDraftFilter] = useState<QuickFilter>(
+    initialFilter ?? { column: "", op: "=", value: "" },
+  );
+  const setActiveConnection = useWorkspaceStore((s) => s.setActiveConnection);
   const [edits, setEdits] = useState<Edits>({});
   const [deletes, setDeletes] = useState<Set<number>>(new Set());
   const [inserts, setInserts] = useState<InsertRow[]>([]);
@@ -129,6 +164,12 @@ export function DataGrid({
     () => (tableInfo?.columns ?? []).filter((c) => c.isPrimaryKey).map((c) => c.name),
     [tableInfo],
   );
+  // Foreign-key target per column name, for the "jump to referenced row" affordance.
+  const fkByName = useMemo(() => {
+    const m = new Map<string, ForeignKeyRef>();
+    for (const c of tableInfo?.columns ?? []) if (c.foreignKey) m.set(c.name, c.foreignKey);
+    return m;
+  }, [tableInfo]);
 
   const query = useTableData({ connection, schema, table, page, pageSize: PAGE_SIZE, filter, sort });
   const exec = useExecuteSql(connection.id);
@@ -143,6 +184,12 @@ export function DataGrid({
   const colWidths = useMemo(
     () => columns.map((c) => widthMap?.[c.name] ?? DEFAULT_COL_WIDTH),
     [columns, widthMap],
+  );
+  // Foreign-key target aligned to the *result* columns (by name), so the grid can show a jump
+  // arrow on the right column even if column order differs from the schema.
+  const fkByColIndex = useMemo(
+    () => columns.map((c) => fkByName.get(c.name)),
+    [columns, fkByName],
   );
 
   // Row indices change when the page/filter/sort changes within a table — drop pending edits.
@@ -168,6 +215,37 @@ export function DataGrid({
       setDraftFilter((f) => ({ ...f, column: columns[0].name }));
     }
   }, [columns, draftFilter.column]);
+
+  // Re-apply the jump filter when a *new* foreign-key jump re-targets this already-open tab
+  // (filterRev bumps). On a fresh mount the useState initializers already applied it, so this
+  // only fires on subsequent jumps — guarded by the previous rev so it doesn't run on mount.
+  const prevFilterRev = useRef(filterRev);
+  useEffect(() => {
+    if (filterRev === prevFilterRev.current) return;
+    prevFilterRev.current = filterRev;
+    if (initialFilter) {
+      setFilter(initialFilter);
+      setDraftFilter(initialFilter);
+      setPage(0);
+    }
+  }, [filterRev, initialFilter]);
+
+  // Open the referenced table (same connection) pre-filtered to the clicked FK cell's value.
+  const jumpToReference = (rowIndex: number, colIndex: number) => {
+    const fk = fkByColIndex[colIndex];
+    if (!fk) return;
+    const cell = edits[rowIndex]?.[colIndex] ?? rows[rowIndex]?.[colIndex];
+    if (!cell) return;
+    const value = fkFilterValue(cell);
+    if (value === null) return;
+    // Make this grid's connection active first, so the new tab lands on the right connection
+    // even when the jump is clicked in a non-focused split pane.
+    setActiveConnection(connection.id);
+    openTableTab(
+      { schema: fk.schema, name: fk.table },
+      { column: fk.column, op: "=", value, columnKind: cell.kind },
+    );
+  };
 
   const editCount = Object.keys(edits).length;
   const deleteCount = deletes.size;
@@ -403,6 +481,8 @@ export function DataGrid({
         onResize={(col, width) =>
           setColumnWidth(tableKey, col, Math.max(MIN_COL_WIDTH, Math.round(width)))
         }
+        fkByColIndex={fkByColIndex}
+        onJump={jumpToReference}
         rows={rows}
         edits={edits}
         deletes={deletes}
@@ -549,6 +629,9 @@ interface GridBodyProps {
   /** Per-column pixel widths, aligned to `columns` by index. */
   widths: number[];
   onResize: (column: string, width: number) => void;
+  /** Foreign-key target per column index (undefined when the column isn't an FK). */
+  fkByColIndex: (ForeignKeyRef | undefined)[];
+  onJump: (rowIndex: number, colIndex: number) => void;
   rows: CellValue[][];
   edits: Edits;
   deletes: Set<number>;
@@ -568,6 +651,8 @@ function GridBody({
   columns,
   widths,
   onResize,
+  fkByColIndex,
+  onJump,
   rows,
   edits,
   deletes,
@@ -706,6 +791,8 @@ function GridBody({
                   value={rows[rowIndex][colIndex]}
                   edited={rowEdits?.[colIndex]}
                   disabled={deleted}
+                  fk={fkByColIndex[colIndex]}
+                  onJump={fkByColIndex[colIndex] ? () => onJump(rowIndex, colIndex) : undefined}
                   onExpand={() => onExpand(rowIndex, colIndex)}
                   onCommit={(raw) => onEdit(rowIndex, colIndex, raw)}
                 />

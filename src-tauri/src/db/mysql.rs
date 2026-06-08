@@ -12,8 +12,8 @@ use mysql_async::{OptsBuilder, Params, Pool, Row, SslOpts, Value};
 
 use crate::db::client::{
     bytes_cell, parse_routine_kind, parse_table_kind, CellValue, ChunkSender, ColumnInfo,
-    ColumnMeta, ConnectionConfig, DbClient, QueryResult, RoutineInfo, Schema, SchemaBuilder,
-    SslMode, StreamChunk, STREAM_BATCH, STREAM_MAX_ROWS,
+    ColumnMeta, ConnectionConfig, DbClient, ForeignKeyRef, QueryResult, RoutineInfo, Schema,
+    SchemaBuilder, SslMode, StreamChunk, STREAM_BATCH, STREAM_MAX_ROWS,
 };
 use crate::error::AppError;
 
@@ -252,11 +252,36 @@ impl DbClient for MysqlClient {
             )
             .await?;
 
+        // Single-column foreign keys for the current database, keyed by (schema, table, column).
+        let fk_rows: Vec<(String, String, String, String, String, String)> = conn
+            .query(
+                "SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, \
+                        REFERENCED_TABLE_SCHEMA, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME \
+                 FROM information_schema.KEY_COLUMN_USAGE \
+                 WHERE TABLE_SCHEMA = DATABASE() AND REFERENCED_TABLE_NAME IS NOT NULL",
+            )
+            .await?;
+        let mut fks: std::collections::HashMap<(String, String, String), ForeignKeyRef> =
+            std::collections::HashMap::new();
+        for (schema, table, column, ref_schema, ref_table, ref_column) in &fk_rows {
+            fks.insert(
+                (schema.clone(), table.clone(), column.clone()),
+                ForeignKeyRef {
+                    schema: ref_schema.clone(),
+                    table: ref_table.clone(),
+                    column: ref_column.clone(),
+                },
+            );
+        }
+
         let mut builder = SchemaBuilder::default();
         for (schema, name, table_type) in &table_rows {
             builder.add_table(schema.clone(), name.clone(), parse_table_kind(table_type));
         }
         for (schema, table, col_name, col_type, is_nullable, col_key) in &col_rows {
+            let foreign_key = fks
+                .get(&(schema.clone(), table.clone(), col_name.clone()))
+                .cloned();
             builder.add_column(
                 schema,
                 table,
@@ -265,6 +290,7 @@ impl DbClient for MysqlClient {
                     data_type: col_type.clone(),
                     nullable: is_nullable.eq_ignore_ascii_case("YES"),
                     is_primary_key: col_key.eq_ignore_ascii_case("PRI"),
+                    foreign_key,
                 },
             );
         }

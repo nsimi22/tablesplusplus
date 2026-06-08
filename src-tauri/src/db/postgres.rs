@@ -15,8 +15,8 @@ use tokio_postgres::Row;
 
 use crate::db::client::{
     bytes_cell, parse_routine_kind, parse_table_kind, CellValue, ChunkSender, ColumnInfo,
-    ColumnMeta, ConnectionConfig, DbClient, QueryResult, RoutineInfo, Schema, SchemaBuilder,
-    SslMode, StreamChunk, STREAM_BATCH, STREAM_MAX_ROWS,
+    ColumnMeta, ConnectionConfig, DbClient, ForeignKeyRef, QueryResult, RoutineInfo, Schema,
+    SchemaBuilder, SslMode, StreamChunk, STREAM_BATCH, STREAM_MAX_ROWS,
 };
 use crate::error::AppError;
 
@@ -252,6 +252,41 @@ impl DbClient for PostgresClient {
             )
             .await?;
 
+        // Single-column foreign keys, keyed by (schema, table, column) → referenced column.
+        // `constraint_column_usage` can mis-pair columns for *composite* FKs; single-column FKs
+        // (the common case, and all we surface) are unambiguous.
+        let fk_rows = conn
+            .query(
+                "SELECT kcu.table_schema, kcu.table_name, kcu.column_name, \
+                        ccu.table_schema, ccu.table_name, ccu.column_name \
+                 FROM information_schema.table_constraints tc \
+                 JOIN information_schema.key_column_usage kcu \
+                   ON tc.constraint_name = kcu.constraint_name \
+                  AND tc.table_schema = kcu.table_schema \
+                 JOIN information_schema.constraint_column_usage ccu \
+                   ON ccu.constraint_name = tc.constraint_name \
+                  AND ccu.table_schema = tc.table_schema \
+                 WHERE tc.constraint_type = 'FOREIGN KEY' \
+                   AND tc.table_schema NOT IN ('pg_catalog','information_schema')",
+                &[],
+            )
+            .await?;
+        let mut fks: std::collections::HashMap<(String, String, String), ForeignKeyRef> =
+            std::collections::HashMap::new();
+        for r in &fk_rows {
+            let schema: String = r.try_get(0)?;
+            let table: String = r.try_get(1)?;
+            let column: String = r.try_get(2)?;
+            fks.insert(
+                (schema, table, column),
+                ForeignKeyRef {
+                    schema: r.try_get(3)?,
+                    table: r.try_get(4)?,
+                    column: r.try_get(5)?,
+                },
+            );
+        }
+
         let mut builder = SchemaBuilder::default();
         for r in &table_rows {
             let schema: String = r.try_get(0)?;
@@ -262,11 +297,16 @@ impl DbClient for PostgresClient {
         for r in &col_rows {
             let schema: String = r.try_get(0)?;
             let table: String = r.try_get(1)?;
+            let name: String = r.try_get(2)?;
+            let foreign_key = fks
+                .get(&(schema.clone(), table.clone(), name.clone()))
+                .cloned();
             let col = ColumnInfo {
-                name: r.try_get(2)?,
+                name,
                 data_type: r.try_get(3)?,
                 nullable: r.try_get(4)?,
                 is_primary_key: r.try_get(5)?,
+                foreign_key,
             };
             builder.add_column(&schema, &table, col);
         }

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { TableInfo } from "@/lib/types";
+import type { QuickFilter } from "@/features/workspace/sql";
 
 /** A tab in the central workspace — either a table data view or a SQL editor. Each tab belongs
  *  to a specific connection, so tabs from different connections can coexist (and be split). */
@@ -13,6 +14,10 @@ export interface WorkspaceTab {
   table?: string;
   /** For query tabs (last edited SQL is retained while the tab is open). */
   sql?: string;
+  /** For table tabs opened/re-targeted via a foreign-key jump: the filter the grid should apply.
+   *  `filterRev` bumps on each jump so the grid re-applies even when the tab already existed. */
+  tableFilter?: QuickFilter;
+  filterRev?: number;
 }
 
 interface WorkspaceState {
@@ -37,7 +42,9 @@ interface WorkspaceState {
   closeConnection: (connectionId: string) => void;
   setHubOpen: (open: boolean) => void;
 
-  openTableTab: (table: Pick<TableInfo, "schema" | "name">) => void;
+  /** Open (or focus) a table tab. An optional `filter` is applied by the grid — used by the
+   *  foreign-key jump to land pre-filtered on the referenced row. */
+  openTableTab: (table: Pick<TableInfo, "schema" | "name">, filter?: QuickFilter) => void;
   /** Open a new SQL tab; `initial` pre-fills it (e.g. a saved query from the sidebar). */
   openQueryTab: (initial?: { title?: string; sql?: string }) => void;
   setTabSql: (tabId: string, sql: string) => void;
@@ -125,13 +132,21 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       return { openConnectionIds, tabs, activeConnectionId, activeTabId, secondaryTabId };
     }),
 
-  openTableTab: (table) =>
+  openTableTab: (table, filter) =>
     set((state) => {
       const connectionId = state.activeConnectionId;
       if (!connectionId) return {};
       const id = tableTabId(connectionId, table.schema, table.name);
-      if (state.tabs.some((t) => t.id === id)) {
-        return { activeTabId: id };
+      const existing = state.tabs.find((t) => t.id === id);
+      if (existing) {
+        // Re-target an open tab. Only touch its filter when a jump supplied one (a plain reopen
+        // leaves the tab's current filter alone); bump filterRev so the grid re-applies it.
+        const tabs = filter
+          ? state.tabs.map((t) =>
+              t.id === id ? { ...t, tableFilter: filter, filterRev: (t.filterRev ?? 0) + 1 } : t,
+            )
+          : state.tabs;
+        return { tabs, activeTabId: id };
       }
       const tab: WorkspaceTab = {
         id,
@@ -140,6 +155,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         title: table.name,
         schema: table.schema,
         table: table.name,
+        tableFilter: filter,
+        filterRev: filter ? 1 : 0,
       };
       return { tabs: [...state.tabs, tab], activeTabId: id };
     }),

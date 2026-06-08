@@ -141,6 +141,8 @@ function PaneContent({
       connection={connection}
       schema={tab.schema as string}
       table={tab.table as string}
+      initialFilter={tab.tableFilter}
+      filterRev={tab.filterRev}
     />
   ) : (
     <SqlConsole key={tab.id} connection={connection} tabId={tab.id} />
