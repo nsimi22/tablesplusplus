@@ -45,6 +45,22 @@ export function useDeleteConnection() {
   });
 }
 
+/** Import connections (metadata only — secrets are entered on first connect). Saves each
+ *  sequentially to avoid racing the connections.json store, then refreshes the list once. */
+export function useImportConnections() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (inputs: ConnectionInput[]) => {
+      const created: ConnectionConfig[] = [];
+      for (const input of inputs) {
+        created.push(await ipc.saveConnection(input));
+      }
+      return created;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: CONNECTIONS_KEY }),
+  });
+}
+
 /** Test the current form values (input) or a stored connection (id). */
 export function useTestConnection() {
   return useMutation({

@@ -8,7 +8,9 @@
     "updater:default",
     "process:allow-restart",
     "dialog:allow-save",
+    "dialog:allow-open",
     "clipboard-manager:allow-write-text",
-    "fs:allow-write-text-file"
+    "fs:allow-write-text-file",
+    "fs:allow-read-text-file"
   ]
 }

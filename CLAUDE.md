@@ -494,3 +494,17 @@ npm run typecheck
   vanish on disconnect (closeConnection filters them) and on app quit (never persisted).
   `DbConnection::engine()` accessor added so `list_databases` picks engine SQL without the store.
   Also: the connection switcher's Disconnect (power) button is now always visible, not hover-only.
+- [2026-06-08] Connection import/export — Share connections as a JSON file. **Metadata only —
+  secrets are never written** (passwords/SSH secrets stay in the keyring per §7); the recipient
+  enters the password on first connect. Frontend-only (`src/features/connections/
+  connectionShare.ts`): export strips the local `id`, wraps configs in a versioned envelope
+  `{ tablesplusplus: "connections", version: 1, connections: [...] }`, and writes via the dialog
+  `save()` + `fs.writeTextFile` (default name `<label>.tablesplus.json`). Import uses dialog
+  `open()` + `fs.readTextFile`, validates the envelope (marker/version/fields, engine, sslMode,
+  ssh) and feeds each through the existing `save_connection` command (which mints a fresh id and
+  leaves the secret empty) via `useImportConnections` (sequential, to avoid racing
+  connections.json). The Connection Hub gets an Import button (header) + per-connection Export
+  button; after import the first one opens in the edit form so the password field is right there.
+  New capabilities: `dialog:allow-open`, `fs:allow-read-text-file`. No backend code added.
+  Caveat: `ssh.keyPath` travels as the sharer's local path; SSH connections need the recipient to
+  fix it. No dedup — re-importing makes another saved connection.
