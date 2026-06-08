@@ -18,6 +18,7 @@ import { Select } from "@/components/ui/Select";
 import { Spinner } from "@/components/ui/Spinner";
 import { cn } from "@/lib/utils";
 import { errorMessage, type CellValue, type ColumnMeta, type ConnectionConfig } from "@/lib/types";
+import { useColumnWidthsStore } from "@/store/useColumnWidthsStore";
 import { useSchema, useTableData } from "@/features/workspace/hooks";
 import {
   buildDelete,
@@ -46,7 +47,8 @@ import { GridCellView } from "./GridCellView";
 
 const PAGE_SIZE = 500;
 const ROW_HEIGHT = 28;
-const COL_WIDTH = 184;
+const DEFAULT_COL_WIDTH = 184;
+const MIN_COL_WIDTH = 80;
 const GUTTER_WIDTH = 32;
 
 /** rowIndex → (colIndex → new value). */
@@ -134,6 +136,14 @@ export function DataGrid({
   // Memoized so the references stay stable across renders (avoids effect churn).
   const columns = useMemo(() => query.data?.columns ?? [], [query.data]);
   const rows = useMemo(() => query.data?.rows ?? [], [query.data]);
+
+  // Per-column widths (persisted per table); unset columns fall back to the default.
+  const widthMap = useColumnWidthsStore((s) => s.widths[tableKey]);
+  const setColumnWidth = useColumnWidthsStore((s) => s.setWidth);
+  const colWidths = useMemo(
+    () => columns.map((c) => widthMap?.[c.name] ?? DEFAULT_COL_WIDTH),
+    [columns, widthMap],
+  );
 
   // Row indices change when the page/filter/sort changes within a table — drop pending edits.
   // (Table/connection changes are handled by the render-phase reset above.)
@@ -389,6 +399,10 @@ export function DataGrid({
 
       <GridBody
         columns={columns.map((c) => ({ name: c.name, dataType: c.dataType }))}
+        widths={colWidths}
+        onResize={(col, width) =>
+          setColumnWidth(tableKey, col, Math.max(MIN_COL_WIDTH, Math.round(width)))
+        }
         rows={rows}
         edits={edits}
         deletes={deletes}
@@ -532,6 +546,9 @@ function FilterBarView({
 
 interface GridBodyProps {
   columns: { name: string; dataType: string }[];
+  /** Per-column pixel widths, aligned to `columns` by index. */
+  widths: number[];
+  onResize: (column: string, width: number) => void;
   rows: CellValue[][];
   edits: Edits;
   deletes: Set<number>;
@@ -549,6 +566,8 @@ interface GridBodyProps {
 
 function GridBody({
   columns,
+  widths,
+  onResize,
   rows,
   edits,
   deletes,
@@ -582,7 +601,7 @@ function GridBody({
     prevInsertCount.current = inserts.length;
   }, [inserts.length]);
 
-  const totalWidth = GUTTER_WIDTH + columns.length * COL_WIDTH;
+  const totalWidth = GUTTER_WIDTH + widths.reduce((sum, w) => sum + w, 0);
   // Draft insert rows render below the (virtualized) data rows, so extend the canvas height.
   const dataHeight = virtualizer.getTotalSize();
   const canvasHeight = dataHeight + inserts.length * ROW_HEIGHT;
@@ -610,33 +629,41 @@ function GridBody({
         style={{ width: totalWidth }}
       >
         <div className="shrink-0 border-r border-border" style={{ width: GUTTER_WIDTH }} />
-        {columns.map((col) => {
+        {columns.map((col, colIndex) => {
           const active = sort?.column === col.name;
           return (
-            <button
+            <div
               key={col.name}
-              type="button"
-              onClick={() => onSort(col.name)}
-              style={{ width: COL_WIDTH }}
-              title={`Sort by ${col.name}`}
-              className="group flex shrink-0 items-center gap-1 border-r border-border px-2 py-1 text-left hover:bg-accent/50"
+              style={{ width: widths[colIndex] }}
+              className="group relative flex shrink-0 items-stretch border-r border-border"
             >
-              <span className="flex min-w-0 flex-col justify-center">
-                <span className="truncate text-xs font-semibold">{col.name}</span>
-                <span className="truncate text-[10px] text-muted-foreground">{col.dataType}</span>
-              </span>
-              <span className="ml-auto shrink-0">
-                {active ? (
-                  sort?.dir === "asc" ? (
-                    <ChevronUp className="h-3.5 w-3.5 text-primary" />
+              <button
+                type="button"
+                onClick={() => onSort(col.name)}
+                title={`Sort by ${col.name}`}
+                className="flex min-w-0 flex-1 items-center gap-1 px-2 py-1 text-left hover:bg-accent/50"
+              >
+                <span className="flex min-w-0 flex-col justify-center">
+                  <span className="truncate text-xs font-semibold">{col.name}</span>
+                  <span className="truncate text-[10px] text-muted-foreground">{col.dataType}</span>
+                </span>
+                <span className="ml-auto shrink-0">
+                  {active ? (
+                    sort?.dir === "asc" ? (
+                      <ChevronUp className="h-3.5 w-3.5 text-primary" />
+                    ) : (
+                      <ChevronDown className="h-3.5 w-3.5 text-primary" />
+                    )
                   ) : (
-                    <ChevronDown className="h-3.5 w-3.5 text-primary" />
-                  )
-                ) : (
-                  <ChevronsUpDown className="h-3.5 w-3.5 text-muted-foreground/40 opacity-0 group-hover:opacity-100" />
-                )}
-              </span>
-            </button>
+                    <ChevronsUpDown className="h-3.5 w-3.5 text-muted-foreground/40 opacity-0 group-hover:opacity-100" />
+                  )}
+                </span>
+              </button>
+              <ColumnResizeHandle
+                width={widths[colIndex]}
+                onResize={(w) => onResize(col.name, w)}
+              />
+            </div>
           );
         })}
       </div>
@@ -675,7 +702,7 @@ function GridBody({
               {columns.map((_, colIndex) => (
                 <GridCellView
                   key={colIndex}
-                  width={COL_WIDTH}
+                  width={widths[colIndex]}
                   value={rows[rowIndex][colIndex]}
                   edited={rowEdits?.[colIndex]}
                   disabled={deleted}
@@ -703,7 +730,7 @@ function GridBody({
             {columns.map((_, colIndex) => (
               <GridCellView
                 key={colIndex}
-                width={COL_WIDTH}
+                width={widths[colIndex]}
                 value={insert.cells[colIndex] ?? { kind: "text", value: "" }}
                 onCommit={(raw) => onInsertEdit(insert.id, colIndex, raw)}
               />
@@ -712,6 +739,39 @@ function GridBody({
         ))}
       </div>
     </div>
+  );
+}
+
+/** A drag handle on a column's right edge. Uses pointer capture so the drag (and the click that
+ *  ends it) is routed to the handle, never bubbling up to the header's sort button. The starting
+ *  width is captured on pointer-down, so resizing stays exact even as the column re-renders. */
+function ColumnResizeHandle({
+  width,
+  onResize,
+}: {
+  width: number;
+  onResize: (width: number) => void;
+}) {
+  const startRef = useRef<{ x: number; width: number } | null>(null);
+  return (
+    <div
+      onPointerDown={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        startRef.current = { x: e.clientX, width };
+        e.currentTarget.setPointerCapture(e.pointerId);
+      }}
+      onPointerMove={(e) => {
+        if (startRef.current) onResize(startRef.current.width + (e.clientX - startRef.current.x));
+      }}
+      onPointerUp={(e) => {
+        startRef.current = null;
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }}
+      onClick={(e) => e.stopPropagation()}
+      title="Drag to resize"
+      className="absolute right-0 top-0 z-10 -mr-px h-full w-1.5 cursor-col-resize hover:bg-ring"
+    />
   );
 }
 
