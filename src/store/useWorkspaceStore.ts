@@ -1,6 +1,14 @@
 import { create } from "zustand";
-import type { TableInfo } from "@/lib/types";
+import type { ConnectionConfig, TableInfo } from "@/lib/types";
 import type { QuickFilter } from "@/features/workspace/sql";
+
+/** A database opened on an existing server as a session connection (database switcher). It reuses
+ *  the parent (persisted) connection's credentials and is not saved; `rootId` is that parent's id
+ *  (used to open further databases / resolve the secret). */
+export interface SessionConnection {
+  config: ConnectionConfig;
+  rootId: string;
+}
 
 /** A tab in the central workspace — either a table data view or a SQL editor. Each tab belongs
  *  to a specific connection, so tabs from different connections can coexist (and be split). */
@@ -23,6 +31,8 @@ export interface WorkspaceTab {
 interface WorkspaceState {
   /** Connections currently open (pools alive in the backend), in the order they were opened. */
   openConnectionIds: string[];
+  /** Session connections (database-switcher targets); their metadata isn't in the saved list. */
+  sessionConnections: SessionConnection[];
   /** The focused connection — drives the schema-tree sidebar and where new tabs are created. */
   activeConnectionId: string | null;
   /** Show the Connection Hub over the workspace (to open/manage another connection). */
@@ -36,6 +46,8 @@ interface WorkspaceState {
 
   /** Open (or focus) a connection and make it active. */
   openConnection: (connectionId: string) => void;
+  /** Register a session connection (its pool is already open in the backend) and focus it. */
+  addSessionConnection: (config: ConnectionConfig, rootId: string) => void;
   /** Focus an already-open connection (sidebar follows; activates its most-recent tab). */
   setActiveConnection: (connectionId: string) => void;
   /** Close a connection: remove it and its tabs, then pick a new active connection. */
@@ -83,6 +95,7 @@ function keepSecondary(
 
 export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   openConnectionIds: [],
+  sessionConnections: [],
   activeConnectionId: null,
   hubOpen: false,
   tabs: [],
@@ -97,6 +110,25 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
           ? state.openConnectionIds
           : [...state.openConnectionIds, connectionId],
         activeConnectionId: connectionId,
+        hubOpen: false,
+        activeTabId,
+        secondaryTabId: keepSecondary(state.secondaryTabId, state.tabs, activeTabId),
+      };
+    }),
+
+  addSessionConnection: (config, rootId) =>
+    set((state) => {
+      const sessionConnections = state.sessionConnections.some((s) => s.config.id === config.id)
+        ? state.sessionConnections
+        : [...state.sessionConnections, { config, rootId }];
+      const openConnectionIds = state.openConnectionIds.includes(config.id)
+        ? state.openConnectionIds
+        : [...state.openConnectionIds, config.id];
+      const activeTabId = lastTabOf(state.tabs, config.id);
+      return {
+        sessionConnections,
+        openConnectionIds,
+        activeConnectionId: config.id,
         hubOpen: false,
         activeTabId,
         secondaryTabId: keepSecondary(state.secondaryTabId, state.tabs, activeTabId),
@@ -128,8 +160,19 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         activeTabId = lastTabOf(tabs, activeConnectionId);
       }
       const secondaryTabId = keepSecondary(state.secondaryTabId, tabs, activeTabId);
+      // Drop the session-connection entry too (if this was one), so it leaves the switcher.
+      const sessionConnections = state.sessionConnections.filter(
+        (s) => s.config.id !== connectionId,
+      );
       // Returning to no open connections shows the hub (driven by openConnectionIds in App).
-      return { openConnectionIds, tabs, activeConnectionId, activeTabId, secondaryTabId };
+      return {
+        openConnectionIds,
+        sessionConnections,
+        tabs,
+        activeConnectionId,
+        activeTabId,
+        secondaryTabId,
+      };
     }),
 
   openTableTab: (table, filter) =>

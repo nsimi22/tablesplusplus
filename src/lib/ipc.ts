@@ -63,6 +63,17 @@ export function disconnect(id: string): Promise<void> {
   return invoke<void>("disconnect", { id });
 }
 
+/** List the databases on an open connection's server (for the database switcher). */
+export function listDatabases(id: string): Promise<string[]> {
+  return invoke<string[]>("list_databases", { id });
+}
+
+/** Open another database on the same server as a session connection (reuses the parent
+ *  connection's credentials; nothing is persisted). Returns the derived connection config. */
+export function openDatabase(rootId: string, database: string): Promise<ConnectionConfig> {
+  return invoke<ConnectionConfig>("open_database", { rootId, database });
+}
+
 /** Introspect tables/views/routines for a connected database. */
 export function getSchema(id: string): Promise<Schema> {
   return invoke<Schema>("get_schema", { id });

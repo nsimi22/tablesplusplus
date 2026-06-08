@@ -6,13 +6,14 @@ import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { cn } from "@/lib/utils";
 import type { ConnectionConfig } from "@/lib/types";
 import { useWorkspaceStore, type WorkspaceTab } from "@/store/useWorkspaceStore";
-import { useConnections } from "@/features/connections/useConnections";
+import { useAllConnections } from "@/features/connections/useConnections";
 import { CONNECTION_COLOR_CLASS } from "@/features/connections/connectionDefaults";
 import { DataGrid } from "@/features/grid/DataGrid";
 import { SqlConsole } from "@/features/editor/SqlConsole";
 import { SchemaTree } from "./SchemaTree";
 import { TabBar } from "./TabBar";
 import { ConnectionSwitcher } from "./ConnectionSwitcher";
+import { DatabaseSwitcher } from "./DatabaseSwitcher";
 
 export function Workspace() {
   const activeConnectionId = useWorkspaceStore((s) => s.activeConnectionId);
@@ -22,8 +23,8 @@ export function Workspace() {
   const openQueryTab = useWorkspaceStore((s) => s.openQueryTab);
   const toggleSecondaryTab = useWorkspaceStore((s) => s.toggleSecondaryTab);
 
-  const { data: connections } = useConnections();
-  const connFor = (id: string | undefined) => connections?.find((c) => c.id === id);
+  const connections = useAllConnections();
+  const connFor = (id: string | undefined) => connections.find((c) => c.id === id);
 
   if (!activeConnectionId) {
     return (
@@ -43,10 +44,11 @@ export function Workspace() {
       <header className="flex items-center gap-2 border-b border-border bg-surface px-3 py-2">
         <Database className="h-4 w-4 text-primary" />
         <ConnectionSwitcher />
+        <DatabaseSwitcher />
         {activeConn ? (
           <span className="hidden truncate text-xs text-muted-foreground md:inline">
             {activeConn.engine === "postgres" ? "PostgreSQL" : "MySQL"} · {activeConn.host}:
-            {activeConn.port}/{activeConn.database}
+            {activeConn.port}
           </span>
         ) : null}
         <div className="ml-auto flex items-center gap-1">

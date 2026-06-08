@@ -53,6 +53,8 @@ pub fn run() {
             commands::test_connection,
             commands::connect,
             commands::disconnect,
+            commands::list_databases,
+            commands::open_database,
             commands::get_schema,
             commands::execute_query,
             commands::execute_query_stream,

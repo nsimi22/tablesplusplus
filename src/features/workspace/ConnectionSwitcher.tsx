@@ -3,7 +3,7 @@ import { ChevronDown, Plus, Power } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ConnectionConfig } from "@/lib/types";
 import { useWorkspaceStore } from "@/store/useWorkspaceStore";
-import { useConnections, useDisconnect } from "@/features/connections/useConnections";
+import { useAllConnections, useDisconnect } from "@/features/connections/useConnections";
 import { CONNECTION_COLOR_CLASS } from "@/features/connections/connectionDefaults";
 
 /** Header dropdown that switches the active (focused) connection, disconnects one, or opens
@@ -18,7 +18,7 @@ export function ConnectionSwitcher() {
   const closeConnection = useWorkspaceStore((s) => s.closeConnection);
   const setHubOpen = useWorkspaceStore((s) => s.setHubOpen);
 
-  const { data: connections } = useConnections();
+  const connections = useAllConnections();
   const disconnect = useDisconnect();
 
   useEffect(() => {
@@ -37,7 +37,7 @@ export function ConnectionSwitcher() {
     };
   }, [open]);
 
-  const byId = (id: string): ConnectionConfig | undefined => connections?.find((c) => c.id === id);
+  const byId = (id: string): ConnectionConfig | undefined => connections.find((c) => c.id === id);
   const active = activeConnectionId ? byId(activeConnectionId) : undefined;
 
   const onDisconnect = async (id: string) => {
@@ -104,7 +104,7 @@ export function ConnectionSwitcher() {
                   onClick={() => onDisconnect(id)}
                   aria-label="Disconnect"
                   title="Disconnect"
-                  className="shrink-0 rounded p-1 text-muted-foreground opacity-0 hover:text-destructive group-hover:opacity-100"
+                  className="shrink-0 rounded p-1 text-muted-foreground/70 hover:text-destructive"
                 >
                   <Power className="h-3.5 w-3.5" />
                 </button>

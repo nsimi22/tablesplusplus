@@ -392,6 +392,14 @@ impl DbConnection {
         }
     }
 
+    /// The engine backing this live connection (used to pick engine-specific introspection SQL).
+    pub fn engine(&self) -> Engine {
+        match &self.engine {
+            EngineClient::Postgres(_) => Engine::Postgres,
+            EngineClient::Mysql(_) => Engine::Mysql,
+        }
+    }
+
     pub async fn ping(&self) -> Result<(), AppError> {
         match &self.engine {
             EngineClient::Postgres(c) => c.ping().await,

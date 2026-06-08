@@ -468,3 +468,29 @@ npm run typecheck
   latest Opus models) and default to model `claude-opus-4-8`; OpenAI/OpenRouter use the
   OpenAI-compatible `/chat/completions` shape. The frontend builds a compact schema context for
   Text-to-SQL and strips Markdown fences from the model output.
+- [2026-06-08] Column resize — Grid columns are drag-resizable via a right-edge handle on each
+  header (`ColumnResizeHandle`, pointer-capture so the drag/click never triggers the column's
+  sort button). Widths persist per `connectionId/schema/table` in localStorage
+  (`useColumnWidthsStore`, same pattern as history), default 184px / min 80px, applied to header,
+  body cells, and draft insert rows. `totalWidth` is now the sum of per-column widths, not
+  `cols * COL_WIDTH`.
+- [2026-06-08] FK jump — Schema introspection surfaces **single-column** foreign keys
+  (`ForeignKeyRef` on `ColumnInfo`; PG joins `constraint_column_usage`, MySQL reads
+  `KEY_COLUMN_USAGE WHERE REFERENCED_TABLE_NAME IS NOT NULL`). Composite FKs are intentionally
+  skipped (constraint_column_usage can mis-pair them). FK cells show an always-visible ↗ arrow
+  that opens the referenced table in a new tab pre-filtered to `referencedColumn = value`.
+  `openTableTab(table, filter?)` carries the filter onto the tab (`tableFilter` + `filterRev` so
+  a re-jump re-applies to an already-open tab); `DataGrid` seeds its filter from it. The jump
+  first calls `setActiveConnection(connection.id)` so it lands on the right connection even from
+  a non-focused split pane.
+- [2026-06-08] Database switcher — A header `DatabaseSwitcher` lists the server's databases
+  (`list_databases` command: PG `pg_database` non-template/connectable, MySQL `SHOW DATABASES`)
+  and opens another as a **session connection**: `open_database(rootId, database)` builds a pool
+  reusing the parent (persisted) connection's keyring secret under a derived id
+  `{rootId}::db::{database}`, returns a non-persisted `ConnectionConfig`. The frontend tracks
+  these in `useWorkspaceStore.sessionConnections` (`{config, rootId}`); `useAllConnections()`
+  merges them with the saved list so every `connFor`/`byId` lookup resolves them. Picking the
+  persisted connection's own database just refocuses it (no session dupe). Session connections
+  vanish on disconnect (closeConnection filters them) and on app quit (never persisted).
+  `DbConnection::engine()` accessor added so `list_databases` picks engine SQL without the store.
+  Also: the connection switcher's Disconnect (power) button is now always visible, not hover-only.

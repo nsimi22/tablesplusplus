@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as ipc from "@/lib/ipc";
 import type { ConnectionConfig, ConnectionInput } from "@/lib/types";
+import { useWorkspaceStore } from "@/store/useWorkspaceStore";
 
 const CONNECTIONS_KEY = ["connections"] as const;
 
@@ -9,6 +10,14 @@ export function useConnections() {
     queryKey: CONNECTIONS_KEY,
     queryFn: ipc.listConnections,
   });
+}
+
+/** All connections the UI can resolve by id: saved (persisted) + session ones opened via the
+ *  database switcher (whose metadata isn't in the persisted store). */
+export function useAllConnections(): ConnectionConfig[] {
+  const { data: saved } = useConnections();
+  const session = useWorkspaceStore((s) => s.sessionConnections);
+  return [...(saved ?? []), ...session.map((s) => s.config)];
 }
 
 export function useSaveConnection() {
