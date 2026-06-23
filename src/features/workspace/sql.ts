@@ -111,6 +111,73 @@ function numericParam(kind: CellValue["kind"] | undefined, value: string): CellV
 export interface ColumnValue {
   column: string;
   value: CellValue;
+  /** Postgres type name of the column (`ColumnMeta.dataType`), used to decide whether the value
+   *  must be cast from text on commit. Omitted for MySQL. */
+  pgType?: string;
+  /** Schema the Postgres type lives in (`ColumnMeta.typeSchema`), to qualify the cast. */
+  pgTypeSchema?: string;
+}
+
+/** Postgres types our `ToSql for CellValue` binds correctly in the binary wire format. Anything
+ *  else (enums, arrays, `inet`/`cidr`, `interval`, `timetz`, ranges, `money`, …) is read back as
+ *  text but its binary encoding wouldn't match, so it must be cast from text on write. */
+const PG_NATIVE_TYPES = new Set([
+  "bool",
+  "int2",
+  "int4",
+  "int8",
+  "oid",
+  "float4",
+  "float8",
+  "numeric",
+  "text",
+  "varchar",
+  "bpchar",
+  "char",
+  "name",
+  "uuid",
+  "timestamp",
+  "timestamptz",
+  "date",
+  "time",
+  "json",
+  "jsonb",
+]);
+
+/** Coerce a value to the text param used by the `::text::type` cast path (NULL stays NULL). */
+function toTextParam(value: CellValue): CellValue {
+  switch (value.kind) {
+    case "null":
+      return { kind: "null" };
+    case "bool":
+      return { kind: "text", value: value.value ? "true" : "false" };
+    case "int":
+    case "float":
+      return { kind: "text", value: String(value.value) };
+    case "decimal":
+    case "text":
+    case "dateTime":
+      return { kind: "text", value: value.value };
+    case "json":
+      return { kind: "text", value: JSON.stringify(value.value) };
+    case "bytes":
+      return { kind: "text", value: value.value.data };
+  }
+}
+
+/** Render a positional placeholder for one bound value, pushing the param to bind. For Postgres
+ *  non-native column types the value is cast `$n::text::"schema"."type"` and bound as text, so the
+ *  server coerces it via the type's own input function — otherwise the binary param would be
+ *  rejected with SQLSTATE 22P03 (e.g. editing an enum or array cell). */
+function bindParam(engine: Engine, c: ColumnValue, index: number, params: CellValue[]): string {
+  const ph = placeholder(engine, index);
+  if (engine === "postgres" && c.pgType && !PG_NATIVE_TYPES.has(c.pgType)) {
+    params.push(toTextParam(c.value));
+    const schema = c.pgTypeSchema || "pg_catalog";
+    return `${ph}::text::${quoteIdent(engine, schema)}.${quoteIdent(engine, c.pgType)}`;
+  }
+  params.push(c.value);
+  return ph;
 }
 
 /** Build a parameterized UPDATE for a single edited row (CLAUDE.md §7). */
@@ -130,19 +197,11 @@ export function buildUpdate(args: {
   let i = 1;
 
   const setClause = set
-    .map((c) => {
-      const ph = placeholder(engine, i++);
-      params.push(c.value);
-      return `${quoteIdent(engine, c.column)} = ${ph}`;
-    })
+    .map((c) => `${quoteIdent(engine, c.column)} = ${bindParam(engine, c, i++, params)}`)
     .join(", ");
 
   const whereClause = where
-    .map((c) => {
-      const ph = placeholder(engine, i++);
-      params.push(c.value);
-      return `${quoteIdent(engine, c.column)} = ${ph}`;
-    })
+    .map((c) => `${quoteIdent(engine, c.column)} = ${bindParam(engine, c, i++, params)}`)
     .join(" AND ");
 
   const sql = `UPDATE ${qualified(engine, schema, table)} SET ${setClause} WHERE ${whereClause}`;
@@ -167,12 +226,7 @@ export function buildInsert(args: {
   }
   const params: CellValue[] = [];
   const cols = values.map((v) => quoteIdent(engine, v.column)).join(", ");
-  const placeholders = values
-    .map((v, i) => {
-      params.push(v.value);
-      return placeholder(engine, i + 1);
-    })
-    .join(", ");
+  const placeholders = values.map((v, i) => bindParam(engine, v, i + 1, params)).join(", ");
   const sql = `INSERT INTO ${qualified(engine, schema, table)} (${cols}) VALUES (${placeholders})`;
   return { sql, params };
 }
@@ -191,10 +245,7 @@ export function buildDelete(args: {
   }
   const params: CellValue[] = [];
   const whereClause = where
-    .map((c, i) => {
-      params.push(c.value);
-      return `${quoteIdent(engine, c.column)} = ${placeholder(engine, i + 1)}`;
-    })
+    .map((c, i) => `${quoteIdent(engine, c.column)} = ${bindParam(engine, c, i + 1, params)}`)
     .join(" AND ");
   const sql = `DELETE FROM ${qualified(engine, schema, table)} WHERE ${whereClause}`;
   return { sql, params };

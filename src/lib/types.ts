@@ -72,6 +72,9 @@ export interface ConnectionInput {
 export interface ColumnMeta {
   name: string;
   dataType: string;
+  /** Schema of the column's type (Postgres: `pg_catalog` for built-ins, else the type's schema;
+   *  empty for MySQL). Used to schema-qualify casts for non-native PG types on grid commits. */
+  typeSchema: string;
   nullable: boolean;
 }
 

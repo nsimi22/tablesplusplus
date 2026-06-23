@@ -107,6 +107,8 @@ impl DbClient for MysqlClient {
             .map(|s| ColumnMeta {
                 name: s.name.clone(),
                 data_type: type_name(s.column_type).to_string(),
+                // MySQL has no per-type schema; the grid's PG-only cast path ignores this.
+                type_schema: String::new(),
                 nullable: true,
             })
             .collect();
@@ -172,6 +174,8 @@ impl DbClient for MysqlClient {
             .map(|s| ColumnMeta {
                 name: s.name.clone(),
                 data_type: type_name(s.column_type).to_string(),
+                // MySQL has no per-type schema; the grid's PG-only cast path ignores this.
+                type_schema: String::new(),
                 nullable: true,
             })
             .collect();

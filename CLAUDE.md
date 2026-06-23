@@ -508,3 +508,22 @@ npm run typecheck
   New capabilities: `dialog:allow-open`, `fs:allow-read-text-file`. No backend code added.
   Caveat: `ssh.keyPath` travels as the sharer's local path; SSH connections need the recipient to
   fix it. No dedup — re-importing makes another saved connection.
+- [2026-06-23] Postgres — committing a grid edit on a **`uuid`** column (and any other
+  non-natively-bound type) failed with `db error — SQLSTATE 22P03` (invalid_binary_representation).
+  Root cause: tokio-postgres binds params in **binary**, and `ToSql for CellValue` declares
+  `accepts(_) -> true` (bypassing the driver's per-type guard), so a `CellValue::Text` whose target
+  column isn't text-binary-compatible got its UTF-8 bytes mis-read as that type's binary layout.
+  `pg_cell` lowers `uuid`, enums, arrays, `inet`/`cidr`, `interval`, `timetz`, ranges, `money`, etc.
+  to `CellValue::Text`, so all of them broke on commit. **Two-part fix:**
+  (1) `ToSql for CellValue` re-parses the string to a `uuid::Uuid` when `ty == Type::UUID` (uuid
+  has an exact 16-byte binary codec, so bind it natively — fast path, covers SET/WHERE/INSERT/DELETE).
+  (2) For every other non-native type, the grid casts the param in SQL: `$n::text::"schema"."type"`,
+  binding the value **as text** so Postgres coerces it via the type's own input function. This needs
+  the column's PG type *name + schema*, now carried on `ColumnMeta` (`type_schema` added; populated
+  from `Type::schema()` on PG, empty on MySQL). The frontend builders (`sql.ts` `bindParam`) skip
+  the cast for an allowlist of natively-bound types (`PG_NATIVE_TYPES`: bool/int*/float*/numeric/
+  text/varchar/uuid/timestamp*/date/time/json*) and cast everything else; `DataGrid` threads each
+  result column's `dataType`/`typeSchema` into the SET/WHERE/INSERT `ColumnValue`s. MySQL is
+  untouched (the cast path is gated on `engine === "postgres"`; MySQL coerces string params itself).
+  Note: `varchar[]`/array cells currently *display* as a `<_typename>` placeholder (the `_ =>` arm of
+  `pg_cell` can't render arrays as a String) — a separate read-side gap; the write path is now safe.

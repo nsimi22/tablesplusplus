@@ -100,6 +100,7 @@ impl DbClient for PostgresClient {
             .map(|c| ColumnMeta {
                 name: c.name().to_string(),
                 data_type: c.type_().name().to_string(),
+                type_schema: c.type_().schema().to_string(),
                 nullable: true,
             })
             .collect();
@@ -153,6 +154,7 @@ impl DbClient for PostgresClient {
             .map(|c| ColumnMeta {
                 name: c.name().to_string(),
                 data_type: c.type_().name().to_string(),
+                type_schema: c.type_().schema().to_string(),
                 nullable: true,
             })
             .collect();
@@ -448,6 +450,12 @@ impl ToSql for CellValue {
                     .map_err(|e: rust_decimal::Error| Box::new(e) as BoxError)?;
                 d.to_sql(ty, out)
             }
+            // A `uuid` column is read back as Text (see `pg_cell`), so on write we must re-parse
+            // it to a real `Uuid` — tokio-postgres binds params in *binary*, and the 16-byte uuid
+            // codec rejects the 36-char string bytes with SQLSTATE 22P03 (invalid_binary_repr).
+            CellValue::Text(s) if *ty == Type::UUID => uuid::Uuid::parse_str(s)
+                .map_err(|e| Box::new(e) as BoxError)?
+                .to_sql(ty, out),
             CellValue::Text(s) => s.to_sql(ty, out),
             CellValue::Bytes(b) => {
                 let raw = base64::engine::general_purpose::STANDARD

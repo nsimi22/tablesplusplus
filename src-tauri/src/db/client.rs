@@ -120,6 +120,10 @@ impl ConnectionInput {
 pub struct ColumnMeta {
     pub name: String,
     pub data_type: String,
+    /// Schema the column's type lives in (Postgres: `pg_catalog` for built-ins, else the type's
+    /// own schema). Used by the grid to schema-qualify casts for non-native types (enums, arrays,
+    /// inet, …) so app-generated DML round-trips them. Empty for MySQL (no per-type schema).
+    pub type_schema: String,
     pub nullable: bool,
 }
 

@@ -319,7 +319,13 @@ export function DataGrid({
   const pkWhere = (rowIndex: number): ColumnValue[] =>
     pkColumns.map((pk) => {
       const colIndex = columns.findIndex((c) => c.name === pk);
-      return { column: pk, value: rows[rowIndex][colIndex] };
+      const col = columns[colIndex];
+      return {
+        column: pk,
+        value: rows[rowIndex][colIndex],
+        pgType: col?.dataType,
+        pgTypeSchema: col?.typeSchema,
+      };
     });
 
   // Apply pending deletes, then updates, then inserts. Each statement is removed from its pending
@@ -356,10 +362,10 @@ export function DataGrid({
           delete remainingEdits[rowIndex];
           continue;
         }
-        const set: ColumnValue[] = Object.entries(rowEdits).map(([colKey, value]) => ({
-          column: columns[Number(colKey)].name,
-          value,
-        }));
+        const set: ColumnValue[] = Object.entries(rowEdits).map(([colKey, value]) => {
+          const col = columns[Number(colKey)];
+          return { column: col.name, value, pgType: col.dataType, pgTypeSchema: col.typeSchema };
+        });
         const { sql, params } = buildUpdate({
           engine: connection.engine,
           schema,
@@ -390,8 +396,15 @@ export function DataGrid({
       // 3. Inserts — only the columns the user set; the rest take database defaults.
       for (const insert of inserts) {
         const values: ColumnValue[] = columns
-          .map((c, i) =>
-            insert.cells[i] !== undefined ? { column: c.name, value: insert.cells[i] } : null,
+          .map((c, i): ColumnValue | null =>
+            insert.cells[i] !== undefined
+              ? {
+                  column: c.name,
+                  value: insert.cells[i],
+                  pgType: c.dataType,
+                  pgTypeSchema: c.typeSchema,
+                }
+              : null,
           )
           .filter((v): v is ColumnValue => v !== null);
         const { sql, params } = buildInsert({ engine: connection.engine, schema, table, values });
